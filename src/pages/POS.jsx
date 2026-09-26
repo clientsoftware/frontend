@@ -861,23 +861,30 @@ export default function POS() {
 
               {/* Input row */}
               <div className="space-y-2">
-                <div className="relative">
-                  <input
-                    type="text"
-                    placeholder="Product ka naam likhein ya scan karein..."
-                    value={tradeInForm.name}
-                    onChange={(e) => handleTradeInNameChange(e.target.value)}
-                    className="h-8 w-full rounded-lg border border-amber-300 bg-white pl-2.5 pr-2 text-xs text-ink-900 outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-400/30 placeholder:text-ink-400"
-                  />
-                  {tradeInProductMatch && (
-                    <div className="absolute left-0 top-full z-20 mt-0.5 w-full rounded-lg border border-emerald-300 bg-white p-1.5 shadow-md text-[10px]">
-                      <p className="text-emerald-700 font-semibold">
-                        ✅ Inventory mein mila: <span className="font-bold">{tradeInProductMatch.name}</span>
-                      </p>
-                      <p className="text-ink-500">Stock: {tradeInProductMatch.stockInSecondaryUnit ?? 0} {tradeInProductMatch.primaryUnit}</p>
+                <input
+                  type="text"
+                  placeholder="Product ka naam likhein ya scan karein..."
+                  value={tradeInForm.name}
+                  onChange={(e) => handleTradeInNameChange(e.target.value)}
+                  className="h-8 w-full rounded-lg border border-amber-300 bg-white pl-2.5 pr-2 text-xs text-ink-900 outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-400/30 placeholder:text-ink-400"
+                />
+
+                {/* Inline match status — no absolute overlap */}
+                {tradeInForm.name.trim().length >= 2 && (
+                  tradeInProductMatch ? (
+                    <div className="flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-[11px]">
+                      <span className="text-emerald-600">✅</span>
+                      <span className="font-semibold text-emerald-800">Inventory mein mila: {tradeInProductMatch.name}</span>
+                      <span className="ml-auto text-ink-500">Stock: {tradeInProductMatch.stockInSecondaryUnit ?? 0} {tradeInProductMatch.primaryUnit}</span>
                     </div>
-                  )}
-                </div>
+                  ) : (
+                    <div className="flex items-center gap-1.5 rounded-lg border border-brand-200 bg-brand-50 px-2.5 py-1 text-[11px]">
+                      <span>⚠️</span>
+                      <span className="text-ink-600">Inventory mein nahi mila —</span>
+                      <span className="font-semibold text-brand-700">naya product banega</span>
+                    </div>
+                  )
+                )}
 
                 <div className="grid grid-cols-3 gap-1.5">
                   <div className="flex flex-col gap-0.5">
@@ -916,11 +923,6 @@ export default function POS() {
                   </div>
                 </div>
 
-                {!tradeInProductMatch && tradeInForm.name.trim().length >= 2 && (
-                  <p className="text-[10px] text-ink-500 px-1">
-                    ⚠️ Inventory mein nahi mila — <span className="font-semibold text-brand-600">naya product create hoga</span> automatically
-                  </p>
-                )}
 
                 <button
                   type="button"
