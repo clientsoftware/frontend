@@ -158,16 +158,23 @@ export default function POS() {
     [cart]
   );
 
-  // Total value of goods customer brings (trade-in) — must be before netPayable
+  // Total value of already-added trade-in items
   const tradeInTotal = useMemo(
     () => tradeInItems.reduce((s, i) => s + (i.totalValue || 0), 0),
     [tradeInItems]
   );
 
-  // Net amount customer must pay after deducting trade-in goods value
+  // Live preview: value of the trade-in form currently being filled (before clicking Add)
+  const liveFormValue = useMemo(() => {
+    const qty = Number(tradeInForm.quantity) || 0;
+    const rate = Number(tradeInForm.rate) || 0;
+    return qty * rate;
+  }, [tradeInForm.quantity, tradeInForm.rate]);
+
+  // Net Payable = Cart Total - already-added trade-ins - current live form value
   const netPayable = useMemo(
-    () => Math.max(0, cartTotal - tradeInTotal),
-    [cartTotal, tradeInTotal]
+    () => Math.max(0, cartTotal - tradeInTotal - liveFormValue),
+    [cartTotal, tradeInTotal, liveFormValue]
   );
 
   // Change to return to customer
@@ -935,6 +942,20 @@ export default function POS() {
                   </div>
                 </div>
 
+                {/* Live Calculation Preview — updates as you type */}
+                {(Number(tradeInForm.quantity) > 0 || Number(tradeInForm.rate) > 0) && (
+                  <div className="flex items-center justify-between rounded-lg bg-white border border-amber-300 px-3 py-2 text-xs font-semibold">
+                    <span className="text-ink-600">
+                      {Number(tradeInForm.quantity) || 0} {tradeInForm.unit || 'units'}
+                      {' × '}
+                      Rs. {Number(tradeInForm.rate) || 0}
+                      {' ='}
+                    </span>
+                    <span className="text-amber-700 font-bold text-sm">
+                      − {formatCurrency(liveFormValue)}
+                    </span>
+                  </div>
+                )}
 
                 <button
                   type="button"
@@ -996,11 +1017,19 @@ export default function POS() {
                 <span>{formatCurrency(cartTotal)}</span>
               </div>
 
-              {/* Trade-in deduction */}
+              {/* Already-added trade-in items deduction */}
               {tradeInTotal > 0 && (
                 <div className="flex justify-between text-sm font-semibold text-amber-700">
-                  <span>Trade-In Deduction (Goods Received):</span>
+                  <span>Trade-In Deduction (Added Items):</span>
                   <span>- {formatCurrency(tradeInTotal)}</span>
+                </div>
+              )}
+
+              {/* Live form preview deduction (current item being typed) */}
+              {liveFormValue > 0 && (
+                <div className="flex justify-between text-sm font-semibold text-amber-500">
+                  <span>Current Item (Live Preview):</span>
+                  <span>- {formatCurrency(liveFormValue)}</span>
                 </div>
               )}
 
