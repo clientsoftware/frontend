@@ -158,12 +158,18 @@ export default function POS() {
     [cart]
   );
 
+  // Net amount customer must pay after deducting trade-in goods value
+  const netPayable = useMemo(
+    () => Math.max(0, cartTotal - tradeInTotal),
+    [cartTotal, tradeInTotal]
+  );
+
   // Change to return to customer
   const changeToReturn = useMemo(() => {
     const given = Number(cashTendered) || 0;
     if (given <= 0) return 0;
-    return Math.max(0, given - cartTotal);
-  }, [cashTendered, cartTotal]);
+    return Math.max(0, given - netPayable);
+  }, [cashTendered, netPayable]);
 
   const addToCart = (product) => {
     const unit = 'primary';
@@ -306,9 +312,11 @@ export default function POS() {
           lineTotal: getLineTotal(item),
         })),
         paymentMode: paymentType,
-        totalAmount: cartTotal,
-        amountPaid: cartTotal,
-        cashReceived: cartTotal,
+        totalAmount: netPayable,          // net after trade-in deduction
+        grossAmount: cartTotal,           // original bill before trade-in
+        tradeInDiscount: tradeInTotal,    // value of goods customer brought
+        amountPaid: netPayable,
+        cashReceived: netPayable,
         creditAmount: 0,
       };
 
@@ -356,7 +364,10 @@ export default function POS() {
         ...sale,
         customerName: finalCustomerName,
         customerPhone: finalCustomerPhone || '',
-        paidAmount: cartTotal,
+        grossAmount: cartTotal,
+        tradeInDiscount: tradeInTotal,
+        paidAmount: netPayable,
+        totalAmount: netPayable,
         dueAmount: 0,
         changeToReturn,
         createdAt: new Date(),
@@ -854,8 +865,8 @@ export default function POS() {
                   <ArrowLeftRight className="h-3.5 w-3.5" />
                 </div>
                 <div>
-                  <p className="text-xs font-bold text-amber-900">Customer Maal Dega (گاہک اپنا مال دے رہا ہے)</p>
-                  <p className="text-[10px] text-amber-700">Jo maal customer laata hai wo inventory mein add hoga</p>
+                  <p className="text-xs font-bold text-amber-900">Customer Brings Goods (Trade-In)</p>
+                  <p className="text-[10px] text-amber-700">Items customer brings will be added to inventory & deducted from bill</p>
                 </div>
               </div>
 
@@ -888,7 +899,7 @@ export default function POS() {
 
                 <div className="grid grid-cols-3 gap-1.5">
                   <div className="flex flex-col gap-0.5">
-                    <span className="text-[10px] text-amber-800 font-semibold">Qty (مقدار)</span>
+                    <span className="text-[10px] text-amber-800 font-semibold">Quantity</span>
                     <input
                       type="number"
                       min="0"
@@ -900,12 +911,12 @@ export default function POS() {
                     />
                   </div>
                   <div className="flex flex-col gap-0.5">
-                    <span className="text-[10px] text-amber-800 font-semibold">Rate (ریٹ)</span>
+                    <span className="text-[10px] text-amber-800 font-semibold">Rate (Rs.)</span>
                     <input
                       type="number"
                       min="0"
                       step="any"
-                      placeholder="Rs."
+                      placeholder="0"
                       value={tradeInForm.rate}
                       onChange={(e) => setTradeInForm((f) => ({ ...f, rate: e.target.value }))}
                       className="h-8 w-full rounded-lg border border-amber-300 bg-white px-2 text-center text-xs font-bold outline-none focus:border-amber-500"
@@ -930,7 +941,7 @@ export default function POS() {
                   className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-amber-400 bg-amber-100 py-1.5 text-xs font-bold text-amber-900 transition hover:bg-amber-200"
                 >
                   <PackagePlus className="h-3.5 w-3.5" />
-                  Maal Add Karein (Trade-In)
+                  Add Trade-In Item
                 </button>
               </div>
 
@@ -968,8 +979,8 @@ export default function POS() {
                   ))}
                   {tradeInTotal > 0 && (
                     <div className="flex justify-between rounded-lg bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-900">
-                      <span>Trade-In Maal Ki Total Value:</span>
-                      <span>{formatCurrency(tradeInTotal)}</span>
+                      <span>Total Goods Received (Trade-In):</span>
+                      <span>- {formatCurrency(tradeInTotal)}</span>
                     </div>
                   )}
                 </div>
@@ -978,15 +989,31 @@ export default function POS() {
 
             {/* Total Summary */}
             <div className="space-y-1.5 border-t border-ink-100 pt-3">
-              <div className="flex justify-between font-display text-xl font-bold text-ink-900">
-                <span>Total Amount (کل بل):</span>
-                <span className="text-emerald-700">{formatCurrency(cartTotal)}</span>
+              {/* Gross bill */}
+              <div className="flex justify-between text-sm text-ink-600">
+                <span>Gross Bill Amount:</span>
+                <span>{formatCurrency(cartTotal)}</span>
               </div>
+
+              {/* Trade-in deduction */}
+              {tradeInTotal > 0 && (
+                <div className="flex justify-between text-sm font-semibold text-amber-700">
+                  <span>Trade-In Deduction (Goods Received):</span>
+                  <span>- {formatCurrency(tradeInTotal)}</span>
+                </div>
+              )}
+
+              {/* Net Payable */}
+              <div className="flex justify-between font-display text-xl font-bold text-ink-900 border-t border-ink-200 pt-2">
+                <span>Net Payable Amount:</span>
+                <span className="text-emerald-700">{formatCurrency(netPayable)}</span>
+              </div>
+
               <div className="flex items-center justify-between text-xs text-emerald-800 font-semibold">
                 <span>Payment Status:</span>
                 <span className="flex items-center gap-1">
                   <CheckCircle2 className="h-3.5 w-3.5" />
-                  100% Paid (0 Udhaar)
+                  100% Paid — No Credit
                 </span>
               </div>
             </div>
