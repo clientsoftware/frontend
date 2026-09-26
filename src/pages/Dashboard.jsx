@@ -36,10 +36,12 @@ const typeLabels = {
 };
 
 function extractData(res, fallback = null) {
-  const body = res?.data;
+  if (res == null) return fallback;
+  const body = res.data !== undefined ? res.data : res;
   if (Array.isArray(body)) return body;
-  if (body?.data != null) return body.data;
-  return fallback ?? body ?? null;
+  if (body && typeof body === 'object' && body.data !== undefined) return body.data;
+  if (body != null) return body;
+  return fallback;
 }
 
 export default function Dashboard() {
