@@ -158,6 +158,12 @@ export default function POS() {
     [cart]
   );
 
+  // Total value of goods customer brings (trade-in) — must be before netPayable
+  const tradeInTotal = useMemo(
+    () => tradeInItems.reduce((s, i) => s + (i.totalValue || 0), 0),
+    [tradeInItems]
+  );
+
   // Net amount customer must pay after deducting trade-in goods value
   const netPayable = useMemo(
     () => Math.max(0, cartTotal - tradeInTotal),
@@ -268,11 +274,6 @@ export default function POS() {
   const removeTradeInItem = (id) => {
     setTradeInItems((prev) => prev.filter((i) => i.id !== id));
   };
-
-  const tradeInTotal = useMemo(
-    () => tradeInItems.reduce((s, i) => s + (i.totalValue || 0), 0),
-    [tradeInItems]
-  );
 
   const validateCheckout = () => {
     if (cart.length === 0) {
