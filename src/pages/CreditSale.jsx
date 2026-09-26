@@ -23,6 +23,9 @@ import {
   ArrowUp,
   Barcode,
   X,
+  ArrowLeftRight,
+  PackagePlus,
+  Plus,
 } from 'lucide-react';
 import { salesAPI, productsAPI, customersAPI } from '../api/api';
 import { useToast } from '../context/ToastContext';
@@ -88,6 +91,11 @@ export default function CreditSale() {
   // Credit Payment: 'credit' (full udhaar) or 'partial' (some cash, some udhaar)
   const [creditMode, setCreditMode] = useState('credit');
   const [cashPaidToday, setCashPaidToday] = useState('');
+
+  // Customer Trade-In state (Customer brings goods)
+  const [tradeInItems, setTradeInItems] = useState([]);
+  const [tradeInForm, setTradeInForm] = useState({ name: '', quantity: '', rate: '', unit: 'Pieces' });
+  const [tradeInProductMatch, setTradeInProductMatch] = useState(null);
 
   const [checkingOut, setCheckingOut] = useState(false);
   const [creditWarningOpen, setCreditWarningOpen] = useState(false);
@@ -173,12 +181,51 @@ export default function CreditSale() {
     [cart]
   );
 
-  // Remaining Udhaar amount added in this bill
+  // Active trade-in item currently in the input boxes
+  const activeTradeInFromForm = useMemo(() => {
+    const name = tradeInForm.name?.trim();
+    const qty = Number(tradeInForm.quantity) || 0;
+    const rate = Number(tradeInForm.rate) || 0;
+    if (!name || qty <= 0) return null;
+    return {
+      id: 'active-input-item',
+      name,
+      quantity: qty,
+      rate,
+      unit: tradeInForm.unit || 'Pieces',
+      matchedProductId: tradeInProductMatch?._id || null,
+      matchedProductName: tradeInProductMatch?.name || null,
+      totalValue: qty * rate,
+    };
+  }, [tradeInForm, tradeInProductMatch]);
+
+  // Combined trade-in items (already added + currently in input)
+  const allTradeInItems = useMemo(() => {
+    const items = [...tradeInItems];
+    if (activeTradeInFromForm) {
+      items.push(activeTradeInFromForm);
+    }
+    return items;
+  }, [tradeInItems, activeTradeInFromForm]);
+
+  // Total trade-in deduction
+  const allTradeInTotal = useMemo(
+    () => allTradeInItems.reduce((s, i) => s + (i.totalValue || 0), 0),
+    [allTradeInItems]
+  );
+
+  // Net Bill after deducting customer trade-in goods
+  const netBillAfterTrade = useMemo(
+    () => Math.max(0, cartTotal - allTradeInTotal),
+    [cartTotal, allTradeInTotal]
+  );
+
+  // Remaining Udhaar amount added in this bill (after deducting trade-in and partial cash)
   const currentBillCredit = useMemo(() => {
-    if (creditMode === 'credit') return cartTotal;
+    if (creditMode === 'credit') return netBillAfterTrade;
     const paid = Number(cashPaidToday) || 0;
-    return Math.max(0, cartTotal - paid);
-  }, [creditMode, cartTotal, cashPaidToday]);
+    return Math.max(0, netBillAfterTrade - paid);
+  }, [creditMode, netBillAfterTrade, cashPaidToday]);
 
   // Updated new total customer due after this bill
   const newTotalDue = useMemo(() => {
@@ -236,7 +283,54 @@ export default function CreditSale() {
     setCustomerId('');
     setCreditMode('credit');
     setCashPaidToday('');
+    setTradeInItems([]);
+    setTradeInForm({ name: '', quantity: '', rate: '', unit: 'Pieces' });
+    setTradeInProductMatch(null);
     searchInputRef.current?.focus();
+  };
+
+  // Trade-In: search matching product when name changes
+  const handleTradeInNameChange = (val) => {
+    setTradeInForm((f) => ({ ...f, name: val }));
+    if (val.trim().length >= 2) {
+      const match = products.find(
+        (p) =>
+          p.name.toLowerCase().includes(val.trim().toLowerCase()) ||
+          p.barcode?.toLowerCase() === val.trim().toLowerCase()
+      );
+      setTradeInProductMatch(match || null);
+    } else {
+      setTradeInProductMatch(null);
+    }
+  };
+
+  const addAnotherTradeInItem = () => {
+    const name = tradeInForm.name.trim();
+    const qty = Number(tradeInForm.quantity);
+    const rate = Number(tradeInForm.rate);
+    if (!name) { toast.error('Enter product name'); return; }
+    if (!qty || qty <= 0) { toast.error('Enter quantity'); return; }
+
+    setTradeInItems((prev) => [
+      ...prev,
+      {
+        id: Date.now(),
+        name,
+        quantity: qty,
+        rate,
+        unit: tradeInForm.unit || 'Pieces',
+        matchedProductId: tradeInProductMatch?._id || null,
+        matchedProductName: tradeInProductMatch?.name || null,
+        totalValue: qty * (rate || 0),
+      },
+    ]);
+    setTradeInForm({ name: '', quantity: '', rate: '', unit: 'Pieces' });
+    setTradeInProductMatch(null);
+    toast.success(`Added: ${name} (${qty})`);
+  };
+
+  const removeTradeInItem = (id) => {
+    setTradeInItems((prev) => prev.filter((i) => i.id !== id));
   };
 
   const handleCreateCustomer = async (e) => {
@@ -277,8 +371,8 @@ export default function CreditSale() {
     }
     if (creditMode === 'partial') {
       const paid = Number(cashPaidToday) || 0;
-      if (paid < 0 || paid >= cartTotal) {
-        toast.error('Partial cash must be less than total bill');
+      if (paid < 0 || paid >= netBillAfterTrade) {
+        toast.error('Partial cash must be less than net bill');
         return false;
       }
     }
@@ -293,8 +387,11 @@ export default function CreditSale() {
     if (!validateCheckout()) return;
 
     setCheckingOut(true);
+    const finalTradeInItems = [...allTradeInItems];
+    const finalTradeInTotal = allTradeInTotal;
+    const finalNetBill = Math.max(0, cartTotal - finalTradeInTotal);
     const paidAmount = creditMode === 'partial' ? (Number(cashPaidToday) || 0) : 0;
-    const creditAmount = currentBillCredit;
+    const creditAmount = Math.max(0, finalNetBill - paidAmount);
 
     try {
       const payload = {
@@ -310,22 +407,64 @@ export default function CreditSale() {
           lineTotal: getLineTotal(item),
         })),
         paymentMode: creditMode === 'credit' ? 'credit' : 'partial',
-        totalAmount: cartTotal,
+        totalAmount: finalNetBill,
+        grossAmount: cartTotal,
+        tradeInDiscount: finalTradeInTotal,
         amountPaid: paidAmount,
         cashReceived: paidAmount,
         creditAmount,
-        notes: `Credit Sale (Udhaar) - Prev Due: Rs.${previousDue}`,
+        notes: `Credit Sale (Udhaar) - Prev Due: Rs.${previousDue}${finalTradeInTotal > 0 ? ` - Trade-In: Rs.${finalTradeInTotal}` : ''}`,
       };
 
       const res = await salesAPI.create(payload);
       const sale = extractData(res, {});
 
+      // Auto update inventory with trade-in items
+      if (finalTradeInItems.length > 0) {
+        const tradeInPromises = finalTradeInItems.map(async (ti) => {
+          if (ti.matchedProductId) {
+            try {
+              await productsAPI.adjustStock(ti.matchedProductId, {
+                quantity: ti.quantity,
+                unitUsed: 'primary',
+                type: 'add',
+                reason: `Customer trade-in on credit sale by ${selectedCustomer?.name}`,
+              });
+            } catch (e) {
+              console.warn('Stock adjust failed for trade-in:', ti.name, e);
+            }
+          } else {
+            try {
+              await productsAPI.create({
+                name: ti.name,
+                category: 'Customer Trade-In',
+                primaryUnit: ti.unit || 'Pieces',
+                secondaryUnit: ti.unit || 'Pieces',
+                conversionRate: 1,
+                costPrice: ti.rate || 0,
+                salePrice: ti.rate || 0,
+                currentStock: ti.quantity,
+              });
+            } catch (e) {
+              console.warn('Product creation failed for trade-in:', ti.name, e);
+            }
+          }
+        });
+        await Promise.allSettled(tradeInPromises);
+        toast.success(`📦 ${finalTradeInItems.length} trade-in item(s) stock automatically updated!`);
+        fetchProducts();
+      }
+
       setCompletedSale({
         ...sale,
         customerName: selectedCustomer?.name,
         customerPhone: selectedCustomer?.phone,
+        grossAmount: cartTotal,
+        tradeInDiscount: finalTradeInTotal,
+        tradeInItems: finalTradeInItems.length > 0 ? finalTradeInItems : null,
         previousDue,
-        currentBillCredit,
+        currentBillCredit: creditAmount,
+        netBillAfterTrade: finalNetBill,
         paidToday: paidAmount,
         newTotalDue: previousDue + creditAmount,
         createdAt: new Date(),
@@ -747,6 +886,146 @@ export default function CreditSale() {
               )}
             </div>
 
+            {/* ====== CUSTOMER TRADE-IN SECTION ====== */}
+            <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-3 space-y-2.5">
+              <div className="flex items-center gap-2 border-b border-amber-200 pb-2">
+                <div className="flex h-6 w-6 items-center justify-center rounded-md bg-amber-100 text-amber-700">
+                  <ArrowLeftRight className="h-3.5 w-3.5" />
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-amber-900">Customer Brings Goods (Trade-In)</p>
+                  <p className="text-[10px] text-amber-700">Items customer brings will be added to inventory & deducted from udhaar</p>
+                </div>
+              </div>
+
+              {/* Input row */}
+              <div className="space-y-2">
+                <input
+                  type="text"
+                  placeholder="Product ka naam likhein ya scan karein..."
+                  value={tradeInForm.name}
+                  onChange={(e) => handleTradeInNameChange(e.target.value)}
+                  className="h-8 w-full rounded-lg border border-amber-300 bg-white pl-2.5 pr-2 text-xs text-ink-900 outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-400/30 placeholder:text-ink-400"
+                />
+
+                {/* Inline match status */}
+                {tradeInForm.name.trim().length >= 2 && (
+                  tradeInProductMatch ? (
+                    <div className="flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-[11px]">
+                      <span className="text-emerald-600">✅</span>
+                      <span className="font-semibold text-emerald-800">Inventory mein mila: {tradeInProductMatch.name}</span>
+                      <span className="ml-auto text-ink-500">Stock: {tradeInProductMatch.stockInSecondaryUnit ?? 0} {tradeInProductMatch.primaryUnit}</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1.5 rounded-lg border border-brand-200 bg-brand-50 px-2.5 py-1 text-[11px]">
+                      <span>⚠️</span>
+                      <span className="text-ink-600">Inventory mein nahi mila —</span>
+                      <span className="font-semibold text-brand-700">naya product banega</span>
+                    </div>
+                  )
+                )}
+
+                <div className="grid grid-cols-3 gap-1.5">
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-[10px] text-amber-800 font-semibold">Quantity</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="any"
+                      placeholder="Qty"
+                      value={tradeInForm.quantity}
+                      onChange={(e) => setTradeInForm((f) => ({ ...f, quantity: e.target.value }))}
+                      className="h-8 w-full rounded-lg border border-amber-300 bg-white px-2 text-center text-xs font-bold outline-none focus:border-amber-500"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-[10px] text-amber-800 font-semibold">Rate (Rs.)</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="any"
+                      placeholder="0"
+                      value={tradeInForm.rate}
+                      onChange={(e) => setTradeInForm((f) => ({ ...f, rate: e.target.value }))}
+                      className="h-8 w-full rounded-lg border border-amber-300 bg-white px-2 text-center text-xs font-bold outline-none focus:border-amber-500"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-[10px] text-amber-800 font-semibold">Unit</span>
+                    <input
+                      type="text"
+                      placeholder="Pieces"
+                      value={tradeInForm.unit}
+                      onChange={(e) => setTradeInForm((f) => ({ ...f, unit: e.target.value }))}
+                      className="h-8 w-full rounded-lg border border-amber-300 bg-white px-2 text-center text-xs outline-none focus:border-amber-500"
+                    />
+                  </div>
+                </div>
+
+                {/* Live Automatic Trade-In Indicator */}
+                {activeTradeInFromForm && (
+                  <div className="flex items-center justify-between rounded-lg bg-emerald-50 border border-emerald-300 px-3 py-2 text-xs font-semibold text-emerald-900">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-emerald-600 font-bold">✓ Auto-Applied:</span>
+                      <span>
+                        {activeTradeInFromForm.name} ({activeTradeInFromForm.quantity} {activeTradeInFromForm.unit} × Rs. {activeTradeInFromForm.rate})
+                      </span>
+                    </div>
+                    <span className="text-emerald-700 font-bold text-sm">
+                      − {formatCurrency(activeTradeInFromForm.totalValue)}
+                    </span>
+                  </div>
+                )}
+
+                {/* Optional button to add extra trade-in item */}
+                <div className="flex justify-end pt-1">
+                  <button
+                    type="button"
+                    onClick={addAnotherTradeInItem}
+                    className="text-[11px] font-semibold text-amber-800 hover:text-amber-950 flex items-center gap-1 underline"
+                  >
+                    <Plus className="h-3 w-3" /> + Add Another Trade-In Item (if multiple)
+                  </button>
+                </div>
+              </div>
+
+              {/* Added Trade-In Items List */}
+              {tradeInItems.length > 0 && (
+                <div className="space-y-1.5 border-t border-amber-200 pt-2">
+                  <p className="text-[11px] font-bold text-amber-900">List of Goods Received:</p>
+                  {tradeInItems.map((ti) => (
+                    <div key={ti.id} className="flex items-center justify-between rounded-lg bg-white border border-amber-200 px-2.5 py-1.5 text-[11px]">
+                      <div>
+                        <p className="font-bold text-ink-900">{ti.name}</p>
+                        <p className="text-ink-500">
+                          {ti.quantity} {ti.unit}
+                          {ti.rate > 0 && ` × Rs. ${ti.rate}`}
+                          {ti.matchedProductId && (
+                            <span className="ml-1 text-emerald-600 font-semibold">(✓ Stock +)</span>
+                          )}
+                          {!ti.matchedProductId && (
+                            <span className="ml-1 text-brand-600 font-semibold">(+ New Product)</span>
+                          )}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {ti.totalValue > 0 && (
+                          <span className="font-bold text-amber-700">{formatCurrency(ti.totalValue)}</span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => removeTradeInItem(ti.id)}
+                          className="text-danger-400 hover:text-danger-600"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {/* Credit Payment Type */}
             <div className="space-y-1.5">
               <label className="text-xs font-semibold uppercase tracking-wider text-ink-600">
@@ -817,20 +1096,32 @@ export default function CreditSale() {
             {/* Bill & Khata Calculation Summary */}
             <div className="space-y-1.5 rounded-xl border border-ink-200 bg-ink-50/60 p-3 text-xs">
               <div className="flex justify-between text-ink-600">
-                <span>Current Bill Total (موجودہ بل):</span>
+                <span>Gross Bill Amount (اصل بل):</span>
                 <span className="font-bold text-ink-900">{formatCurrency(cartTotal)}</span>
               </div>
+              {allTradeInTotal > 0 && (
+                <div className="flex justify-between text-amber-700 font-semibold">
+                  <span>Trade-In Goods Deduction:</span>
+                  <span>- {formatCurrency(allTradeInTotal)}</span>
+                </div>
+              )}
+              {allTradeInTotal > 0 && (
+                <div className="flex justify-between text-ink-700 font-semibold">
+                  <span>Net Bill on this Sale (باقی بل):</span>
+                  <span>{formatCurrency(netBillAfterTrade)}</span>
+                </div>
+              )}
               {creditMode === 'partial' && (
                 <div className="flex justify-between text-emerald-700 font-semibold">
                   <span>Paid Today (آج نقد وصولی):</span>
                   <span>- {formatCurrency(Number(cashPaidToday) || 0)}</span>
                 </div>
               )}
-              <div className="flex justify-between text-danger-700 font-semibold">
+              <div className="flex justify-between text-danger-700 font-semibold border-t border-ink-200 pt-1">
                 <span>New Udhaar on this Bill:</span>
                 <span>+ {formatCurrency(currentBillCredit)}</span>
               </div>
-              <div className="flex justify-between text-ink-600 border-t border-ink-200 pt-1">
+              <div className="flex justify-between text-ink-600">
                 <span>Previous Khata Due (پچھلا بقایا):</span>
                 <span>{formatCurrency(previousDue)}</span>
               </div>
@@ -991,12 +1282,39 @@ export default function CreditSale() {
               </tbody>
             </table>
 
+            {/* Trade-In Goods Received section on receipt */}
+            {completedSale?.tradeInItems && completedSale.tradeInItems.length > 0 && (
+              <div className="mt-3 rounded-lg border border-dashed border-amber-300 bg-amber-50 p-2 text-xs">
+                <p className="font-bold text-amber-800 mb-1">
+                  ↩ Goods Received from Customer (Trade-In):
+                </p>
+                {completedSale.tradeInItems.map((ti, i) => (
+                  <div key={i} className="flex justify-between text-ink-700 py-0.5">
+                    <span>{ti.name} — {ti.quantity} {ti.unit}</span>
+                    <span className="font-semibold text-amber-700">− {formatCurrency(ti.totalValue)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
             {/* Khata Ledger Breakdown */}
             <div className="mt-4 space-y-1 border-t border-dashed border-ink-300 pt-3 text-xs">
               <div className="flex justify-between text-ink-600">
-                <span>Current Bill Total (بل کی کل رقم):</span>
-                <span className="font-bold">{formatCurrency(completedSale?.totalAmount ?? cartTotal)}</span>
+                <span>Gross Bill (اصل بل):</span>
+                <span className="font-bold">{formatCurrency(completedSale?.grossAmount ?? cartTotal)}</span>
               </div>
+              {(completedSale?.tradeInDiscount || 0) > 0 && (
+                <div className="flex justify-between text-amber-700 font-semibold">
+                  <span>Trade-In Goods (مال کی کٹوتی):</span>
+                  <span>− {formatCurrency(completedSale?.tradeInDiscount)}</span>
+                </div>
+              )}
+              {(completedSale?.tradeInDiscount || 0) > 0 && (
+                <div className="flex justify-between text-ink-800 font-semibold">
+                  <span>Net Bill on this Sale:</span>
+                  <span>{formatCurrency(completedSale?.netBillAfterTrade ?? completedSale?.totalAmount)}</span>
+                </div>
+              )}
               <div className="flex justify-between text-emerald-700">
                 <span>Paid Today (آج نقد وصولی):</span>
                 <span>{formatCurrency(completedSale?.paidToday ?? 0)}</span>
@@ -1025,3 +1343,4 @@ export default function CreditSale() {
     </div>
   );
 }
+
