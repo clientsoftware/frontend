@@ -19,6 +19,9 @@ import {
   ArrowUp,
   Barcode,
   X,
+  PackagePlus,
+  ArrowLeftRight,
+  Plus,
 } from 'lucide-react';
 import { salesAPI, productsAPI, customersAPI } from '../api/api';
 import { useToast } from '../context/ToastContext';
@@ -82,6 +85,12 @@ export default function POS() {
 
   const [paymentType, setPaymentType] = useState('cash'); // 'cash' | 'bank'
   const [cashTendered, setCashTendered] = useState(''); // Amount given by customer to calculate change
+
+  // Customer Trade-In: Customer la k deta hai maal (اپنا مال بیچنا)
+  const [tradeInItems, setTradeInItems] = useState([]); // Items customer brings
+  const [tradeInForm, setTradeInForm] = useState({ name: '', quantity: '', rate: '', unit: 'Pieces' });
+  // Existing product match
+  const [tradeInProductMatch, setTradeInProductMatch] = useState(null); // matched product from inventory
 
   const [checkingOut, setCheckingOut] = useState(false);
   const [successOpen, setSuccessOpen] = useState(false);
@@ -204,8 +213,60 @@ export default function POS() {
     setWalkInPhone('');
     setPaymentType('cash');
     setCashTendered('');
+    setTradeInItems([]);
+    setTradeInForm({ name: '', quantity: '', rate: '', unit: 'Pieces' });
+    setTradeInProductMatch(null);
     searchInputRef.current?.focus();
   };
+
+  // Trade-In: search matching product when name changes
+  const handleTradeInNameChange = (val) => {
+    setTradeInForm((f) => ({ ...f, name: val }));
+    if (val.trim().length >= 2) {
+      const match = products.find(
+        (p) =>
+          p.name.toLowerCase().includes(val.trim().toLowerCase()) ||
+          p.barcode?.toLowerCase() === val.trim().toLowerCase()
+      );
+      setTradeInProductMatch(match || null);
+    } else {
+      setTradeInProductMatch(null);
+    }
+  };
+
+  const addTradeInItem = () => {
+    const name = tradeInForm.name.trim();
+    const qty = Number(tradeInForm.quantity);
+    const rate = Number(tradeInForm.rate);
+    if (!name) { toast.error('Product ka naam likhein (name required)'); return; }
+    if (!qty || qty <= 0) { toast.error('Quantity درج کریں'); return; }
+
+    setTradeInItems((prev) => [
+      ...prev,
+      {
+        id: Date.now(),
+        name,
+        quantity: qty,
+        rate,
+        unit: tradeInForm.unit || 'Pieces',
+        matchedProductId: tradeInProductMatch?._id || null,
+        matchedProductName: tradeInProductMatch?.name || null,
+        totalValue: qty * (rate || 0),
+      },
+    ]);
+    setTradeInForm({ name: '', quantity: '', rate: '', unit: 'Pieces' });
+    setTradeInProductMatch(null);
+    toast.success(`✅ Trade-in added: ${name} (${qty})`);
+  };
+
+  const removeTradeInItem = (id) => {
+    setTradeInItems((prev) => prev.filter((i) => i.id !== id));
+  };
+
+  const tradeInTotal = useMemo(
+    () => tradeInItems.reduce((s, i) => s + (i.totalValue || 0), 0),
+    [tradeInItems]
+  );
 
   const validateCheckout = () => {
     if (cart.length === 0) {
@@ -254,6 +315,43 @@ export default function POS() {
       const res = await salesAPI.create(payload);
       const sale = extractData(res, {});
 
+      // ✅ After sale: Add trade-in items to inventory
+      if (tradeInItems.length > 0) {
+        const tradeInPromises = tradeInItems.map(async (ti) => {
+          if (ti.matchedProductId) {
+            // Existing product → increase stock
+            try {
+              await productsAPI.adjustStock(ti.matchedProductId, {
+                quantity: ti.quantity,
+                unitUsed: 'primary',
+                type: 'add',
+                reason: `Customer trade-in by ${finalCustomerName}`,
+              });
+            } catch (e) {
+              console.warn('Stock adjust failed for trade-in:', ti.name, e);
+            }
+          } else {
+            // New product → create in inventory
+            try {
+              await productsAPI.create({
+                name: ti.name,
+                category: 'Customer Trade-In (گاہک کا مال)',
+                primaryUnit: ti.unit || 'Pieces',
+                secondaryUnit: ti.unit || 'Pieces',
+                conversionRate: 1,
+                costPrice: ti.rate || 0,
+                salePrice: ti.rate || 0,
+                currentStock: ti.quantity,
+              });
+            } catch (e) {
+              console.warn('Product creation failed for trade-in:', ti.name, e);
+            }
+          }
+        });
+        await Promise.allSettled(tradeInPromises);
+        toast.success(`📦 ${tradeInItems.length} trade-in item(s) inventory mein add ho gaye!`);
+      }
+
       setCompletedSale({
         ...sale,
         customerName: finalCustomerName,
@@ -262,6 +360,8 @@ export default function POS() {
         dueAmount: 0,
         changeToReturn,
         createdAt: new Date(),
+        tradeInItems: tradeInItems.length > 0 ? tradeInItems : null,
+        tradeInTotal,
       });
       setSuccessOpen(true);
       toast.success('Cash sale completed successfully');
@@ -746,6 +846,133 @@ export default function POS() {
             </div>
 
 
+
+            {/* ====== CUSTOMER TRADE-IN SECTION ====== */}
+            <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-3 space-y-2.5">
+              <div className="flex items-center gap-2 border-b border-amber-200 pb-2">
+                <div className="flex h-6 w-6 items-center justify-center rounded-md bg-amber-100 text-amber-700">
+                  <ArrowLeftRight className="h-3.5 w-3.5" />
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-amber-900">Customer Maal Dega (گاہک اپنا مال دے رہا ہے)</p>
+                  <p className="text-[10px] text-amber-700">Jo maal customer laata hai wo inventory mein add hoga</p>
+                </div>
+              </div>
+
+              {/* Input row */}
+              <div className="space-y-2">
+                <div className="relative">
+                  <input
+                    type="text"
+                    placeholder="Product ka naam likhein ya scan karein..."
+                    value={tradeInForm.name}
+                    onChange={(e) => handleTradeInNameChange(e.target.value)}
+                    className="h-8 w-full rounded-lg border border-amber-300 bg-white pl-2.5 pr-2 text-xs text-ink-900 outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-400/30 placeholder:text-ink-400"
+                  />
+                  {tradeInProductMatch && (
+                    <div className="absolute left-0 top-full z-20 mt-0.5 w-full rounded-lg border border-emerald-300 bg-white p-1.5 shadow-md text-[10px]">
+                      <p className="text-emerald-700 font-semibold">
+                        ✅ Inventory mein mila: <span className="font-bold">{tradeInProductMatch.name}</span>
+                      </p>
+                      <p className="text-ink-500">Stock: {tradeInProductMatch.stockInSecondaryUnit ?? 0} {tradeInProductMatch.primaryUnit}</p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-3 gap-1.5">
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-[10px] text-amber-800 font-semibold">Qty (مقدار)</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="any"
+                      placeholder="Qty"
+                      value={tradeInForm.quantity}
+                      onChange={(e) => setTradeInForm((f) => ({ ...f, quantity: e.target.value }))}
+                      className="h-8 w-full rounded-lg border border-amber-300 bg-white px-2 text-center text-xs font-bold outline-none focus:border-amber-500"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-[10px] text-amber-800 font-semibold">Rate (ریٹ)</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="any"
+                      placeholder="Rs."
+                      value={tradeInForm.rate}
+                      onChange={(e) => setTradeInForm((f) => ({ ...f, rate: e.target.value }))}
+                      className="h-8 w-full rounded-lg border border-amber-300 bg-white px-2 text-center text-xs font-bold outline-none focus:border-amber-500"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-[10px] text-amber-800 font-semibold">Unit</span>
+                    <input
+                      type="text"
+                      placeholder="Pieces"
+                      value={tradeInForm.unit}
+                      onChange={(e) => setTradeInForm((f) => ({ ...f, unit: e.target.value }))}
+                      className="h-8 w-full rounded-lg border border-amber-300 bg-white px-2 text-center text-xs outline-none focus:border-amber-500"
+                    />
+                  </div>
+                </div>
+
+                {!tradeInProductMatch && tradeInForm.name.trim().length >= 2 && (
+                  <p className="text-[10px] text-ink-500 px-1">
+                    ⚠️ Inventory mein nahi mila — <span className="font-semibold text-brand-600">naya product create hoga</span> automatically
+                  </p>
+                )}
+
+                <button
+                  type="button"
+                  onClick={addTradeInItem}
+                  className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-amber-400 bg-amber-100 py-1.5 text-xs font-bold text-amber-900 transition hover:bg-amber-200"
+                >
+                  <PackagePlus className="h-3.5 w-3.5" />
+                  Maal Add Karein (Trade-In)
+                </button>
+              </div>
+
+              {/* Trade-In Items List */}
+              {tradeInItems.length > 0 && (
+                <div className="space-y-1.5 border-t border-amber-200 pt-2">
+                  {tradeInItems.map((ti) => (
+                    <div key={ti.id} className="flex items-center justify-between rounded-lg bg-white border border-amber-200 px-2.5 py-1.5 text-[11px]">
+                      <div>
+                        <p className="font-bold text-ink-900">{ti.name}</p>
+                        <p className="text-ink-500">
+                          {ti.quantity} {ti.unit}
+                          {ti.rate > 0 && ` × Rs. ${ti.rate}`}
+                          {ti.matchedProductId && (
+                            <span className="ml-1 text-emerald-600 font-semibold">(✓ Stock +)</span>
+                          )}
+                          {!ti.matchedProductId && (
+                            <span className="ml-1 text-brand-600 font-semibold">(+ New Product)</span>
+                          )}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {ti.totalValue > 0 && (
+                          <span className="font-bold text-amber-700">{formatCurrency(ti.totalValue)}</span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => removeTradeInItem(ti.id)}
+                          className="text-danger-400 hover:text-danger-600"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  {tradeInTotal > 0 && (
+                    <div className="flex justify-between rounded-lg bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-900">
+                      <span>Trade-In Maal Ki Total Value:</span>
+                      <span>{formatCurrency(tradeInTotal)}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
 
             {/* Total Summary */}
             <div className="space-y-1.5 border-t border-ink-100 pt-3">
