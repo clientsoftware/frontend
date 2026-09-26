@@ -1,7 +1,7 @@
 import { formatCurrency, formatDateTime, cn } from '../utils/helpers';
 
 /**
- * Print-ready sale receipt. Use with window.print() and .print-receipt CSS.
+ * Print-ready sale receipt. Shows trade-in deduction breakdown when applicable.
  */
 export default function SaleReceipt({
   sale,
@@ -12,9 +12,16 @@ export default function SaleReceipt({
 
   const items = sale.items || [];
   const invoiceNo = sale.invoiceNumber || sale.invoiceNo || sale._id || '—';
-  const total = sale.totalAmount ?? sale.total ?? 0;
-  const paid = sale.amountPaid ?? sale.paidAmount ?? 0;
+
+  // Gross = original cart total before trade-in
+  const gross = sale.grossAmount ?? sale.totalAmount ?? sale.total ?? 0;
+  // Trade-in deduction
+  const tradeInDiscount = sale.tradeInDiscount ?? sale.tradeInTotal ?? 0;
+  // Net = what customer actually pays
+  const net = sale.paidAmount ?? sale.amountPaid ?? gross;
   const due = sale.dueAmount ?? sale.creditAmount ?? 0;
+  // Trade-in items list
+  const tradeInItems = sale.tradeInItems || [];
 
   return (
     <div id="print-receipt" className={cn('print-receipt mx-auto max-w-md bg-white text-ink-900', className)}>
@@ -22,7 +29,7 @@ export default function SaleReceipt({
         <h2 className="font-display text-xl font-bold tracking-tight">{businessName}</h2>
         <div className="mt-1 flex items-center justify-center gap-2">
           <span className="rounded bg-brand-100 px-2 py-0.5 text-xs font-bold text-brand-800 uppercase tracking-wider">
-            ESTIMATE BILL
+            CASH SALE BILL
           </span>
         </div>
         <p className="mt-1 text-xs text-ink-500">Sale Receipt / Estimate Bill</p>
@@ -53,6 +60,7 @@ export default function SaleReceipt({
         </div>
       </div>
 
+      {/* Sale Items */}
       <table className="mt-4 w-full text-left text-sm">
         <thead>
           <tr className="border-y border-ink-200 text-xs uppercase tracking-wide text-ink-500">
@@ -86,20 +94,54 @@ export default function SaleReceipt({
         </tbody>
       </table>
 
-      <div className="mt-4 space-y-1 border-t border-dashed border-ink-300 pt-3 text-sm">
-        <div className="flex justify-between">
-          <span className="text-ink-500">Paid</span>
-          <span>{formatCurrency(paid)}</span>
+      {/* Trade-In Section on Receipt */}
+      {tradeInItems.length > 0 && (
+        <div className="mt-3 rounded-lg border border-dashed border-amber-300 bg-amber-50 p-2">
+          <p className="text-xs font-bold text-amber-800 mb-1.5">
+            ↩ Goods Received from Customer (Trade-In):
+          </p>
+          {tradeInItems.map((ti, i) => (
+            <div key={i} className="flex justify-between text-xs text-ink-700 py-0.5">
+              <span>
+                {ti.name} — {ti.quantity} {ti.unit}
+              </span>
+              {ti.totalValue > 0 && (
+                <span className="font-semibold text-amber-700">
+                  − {formatCurrency(ti.totalValue)}
+                </span>
+              )}
+            </div>
+          ))}
         </div>
+      )}
+
+      {/* Bill Summary */}
+      <div className="mt-4 space-y-1 border-t border-dashed border-ink-300 pt-3 text-sm">
+        {/* Show gross only if there's a trade-in deduction */}
+        {tradeInDiscount > 0 && (
+          <div className="flex justify-between text-ink-500">
+            <span>Gross Bill</span>
+            <span>{formatCurrency(gross)}</span>
+          </div>
+        )}
+
+        {tradeInDiscount > 0 && (
+          <div className="flex justify-between font-semibold text-amber-700">
+            <span>Trade-In Deduction</span>
+            <span>− {formatCurrency(tradeInDiscount)}</span>
+          </div>
+        )}
+
         {due > 0 && (
           <div className="flex justify-between text-warning-600">
             <span>Due (Udhaar)</span>
             <span>{formatCurrency(due)}</span>
           </div>
         )}
-        <div className="flex justify-between font-display text-lg font-bold">
-          <span>Total (PKR)</span>
-          <span>{formatCurrency(total)}</span>
+
+        <div className="flex justify-between font-display text-lg font-bold border-t border-ink-200 pt-1 mt-1">
+          <span>Net Total (PKR)</span>
+          <span>{formatCurrency(net)}</span>
         </div>
       </div>
 

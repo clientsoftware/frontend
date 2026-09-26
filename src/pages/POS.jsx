@@ -158,23 +158,43 @@ export default function POS() {
     [cart]
   );
 
-  // Total value of already-added trade-in items
-  const tradeInTotal = useMemo(
-    () => tradeInItems.reduce((s, i) => s + (i.totalValue || 0), 0),
-    [tradeInItems]
-  );
-
-  // Live preview: value of the trade-in form currently being filled (before clicking Add)
-  const liveFormValue = useMemo(() => {
+  // Active trade-in item currently in the input boxes
+  const activeTradeInFromForm = useMemo(() => {
+    const name = tradeInForm.name?.trim();
     const qty = Number(tradeInForm.quantity) || 0;
     const rate = Number(tradeInForm.rate) || 0;
-    return qty * rate;
-  }, [tradeInForm.quantity, tradeInForm.rate]);
+    if (!name || qty <= 0) return null;
+    return {
+      id: 'active-input-item',
+      name,
+      quantity: qty,
+      rate,
+      unit: tradeInForm.unit || 'Pieces',
+      matchedProductId: tradeInProductMatch?._id || null,
+      matchedProductName: tradeInProductMatch?.name || null,
+      totalValue: qty * rate,
+    };
+  }, [tradeInForm, tradeInProductMatch]);
 
-  // Net Payable = Cart Total - already-added trade-ins - current live form value
+  // Combined trade-in items (already added + currently in input)
+  const allTradeInItems = useMemo(() => {
+    const items = [...tradeInItems];
+    if (activeTradeInFromForm) {
+      items.push(activeTradeInFromForm);
+    }
+    return items;
+  }, [tradeInItems, activeTradeInFromForm]);
+
+  // Total trade-in deduction
+  const allTradeInTotal = useMemo(
+    () => allTradeInItems.reduce((s, i) => s + (i.totalValue || 0), 0),
+    [allTradeInItems]
+  );
+
+  // Net amount customer must pay after deducting trade-in goods value
   const netPayable = useMemo(
-    () => Math.max(0, cartTotal - tradeInTotal - liveFormValue),
-    [cartTotal, tradeInTotal, liveFormValue]
+    () => Math.max(0, cartTotal - allTradeInTotal),
+    [cartTotal, allTradeInTotal]
   );
 
   // Change to return to customer
@@ -253,12 +273,12 @@ export default function POS() {
     }
   };
 
-  const addTradeInItem = () => {
+  const addAnotherTradeInItem = () => {
     const name = tradeInForm.name.trim();
     const qty = Number(tradeInForm.quantity);
     const rate = Number(tradeInForm.rate);
-    if (!name) { toast.error('Product ka naam likhein (name required)'); return; }
-    if (!qty || qty <= 0) { toast.error('Quantity درج کریں'); return; }
+    if (!name) { toast.error('Enter product name'); return; }
+    if (!qty || qty <= 0) { toast.error('Enter quantity'); return; }
 
     setTradeInItems((prev) => [
       ...prev,
@@ -275,7 +295,7 @@ export default function POS() {
     ]);
     setTradeInForm({ name: '', quantity: '', rate: '', unit: 'Pieces' });
     setTradeInProductMatch(null);
-    toast.success(`✅ Trade-in added: ${name} (${qty})`);
+    toast.success(`Added: ${name} (${qty})`);
   };
 
   const removeTradeInItem = (id) => {
@@ -304,6 +324,11 @@ export default function POS() {
         ? selectedExistingCustomer.phone
         : walkInPhone.trim() || undefined;
 
+    // Snapshot all trade in items (including current form inputs)
+    const finalTradeInItems = [...allTradeInItems];
+    const finalTradeInTotal = allTradeInTotal;
+    const finalNetPayable = Math.max(0, cartTotal - finalTradeInTotal);
+
     try {
       const payload = {
         customerId: customerMode === 'existing' ? selectedCustomerId || null : null,
@@ -320,20 +345,20 @@ export default function POS() {
           lineTotal: getLineTotal(item),
         })),
         paymentMode: paymentType,
-        totalAmount: netPayable,          // net after trade-in deduction
-        grossAmount: cartTotal,           // original bill before trade-in
-        tradeInDiscount: tradeInTotal,    // value of goods customer brought
-        amountPaid: netPayable,
-        cashReceived: netPayable,
+        totalAmount: finalNetPayable,          // net after trade-in deduction
+        grossAmount: cartTotal,                // original bill before trade-in
+        tradeInDiscount: finalTradeInTotal,    // value of goods customer brought
+        amountPaid: finalNetPayable,
+        cashReceived: finalNetPayable,
         creditAmount: 0,
       };
 
       const res = await salesAPI.create(payload);
       const sale = extractData(res, {});
 
-      // ✅ After sale: Add trade-in items to inventory
-      if (tradeInItems.length > 0) {
-        const tradeInPromises = tradeInItems.map(async (ti) => {
+      // ✅ Auto add trade-in items directly to inventory
+      if (finalTradeInItems.length > 0) {
+        const tradeInPromises = finalTradeInItems.map(async (ti) => {
           if (ti.matchedProductId) {
             // Existing product → increase stock
             try {
@@ -351,7 +376,7 @@ export default function POS() {
             try {
               await productsAPI.create({
                 name: ti.name,
-                category: 'Customer Trade-In (گاہک کا مال)',
+                category: 'Customer Trade-In',
                 primaryUnit: ti.unit || 'Pieces',
                 secondaryUnit: ti.unit || 'Pieces',
                 conversionRate: 1,
@@ -365,7 +390,8 @@ export default function POS() {
           }
         });
         await Promise.allSettled(tradeInPromises);
-        toast.success(`📦 ${tradeInItems.length} trade-in item(s) inventory mein add ho gaye!`);
+        toast.success(`📦 ${finalTradeInItems.length} trade-in item(s) stock automatically updated!`);
+        fetchProducts(); // Refresh products list
       }
 
       setCompletedSale({
@@ -373,14 +399,14 @@ export default function POS() {
         customerName: finalCustomerName,
         customerPhone: finalCustomerPhone || '',
         grossAmount: cartTotal,
-        tradeInDiscount: tradeInTotal,
-        paidAmount: netPayable,
-        totalAmount: netPayable,
+        tradeInDiscount: finalTradeInTotal,
+        paidAmount: finalNetPayable,
+        totalAmount: finalNetPayable,
         dueAmount: 0,
         changeToReturn,
         createdAt: new Date(),
-        tradeInItems: tradeInItems.length > 0 ? tradeInItems : null,
-        tradeInTotal,
+        tradeInItems: finalTradeInItems.length > 0 ? finalTradeInItems : null,
+        tradeInTotal: finalTradeInTotal,
       });
       setSuccessOpen(true);
       toast.success('Cash sale completed successfully');
@@ -942,34 +968,37 @@ export default function POS() {
                   </div>
                 </div>
 
-                {/* Live Calculation Preview — updates as you type */}
-                {(Number(tradeInForm.quantity) > 0 || Number(tradeInForm.rate) > 0) && (
-                  <div className="flex items-center justify-between rounded-lg bg-white border border-amber-300 px-3 py-2 text-xs font-semibold">
-                    <span className="text-ink-600">
-                      {Number(tradeInForm.quantity) || 0} {tradeInForm.unit || 'units'}
-                      {' × '}
-                      Rs. {Number(tradeInForm.rate) || 0}
-                      {' ='}
-                    </span>
-                    <span className="text-amber-700 font-bold text-sm">
-                      − {formatCurrency(liveFormValue)}
+                {/* Live Automatic Trade-In Indicator */}
+                {activeTradeInFromForm && (
+                  <div className="flex items-center justify-between rounded-lg bg-emerald-50 border border-emerald-300 px-3 py-2 text-xs font-semibold text-emerald-900">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-emerald-600 font-bold">✓ Auto-Applied:</span>
+                      <span>
+                        {activeTradeInFromForm.name} ({activeTradeInFromForm.quantity} {activeTradeInFromForm.unit} × Rs. {activeTradeInFromForm.rate})
+                      </span>
+                    </div>
+                    <span className="text-emerald-700 font-bold text-sm">
+                      − {formatCurrency(activeTradeInFromForm.totalValue)}
                     </span>
                   </div>
                 )}
 
-                <button
-                  type="button"
-                  onClick={addTradeInItem}
-                  className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-amber-400 bg-amber-100 py-1.5 text-xs font-bold text-amber-900 transition hover:bg-amber-200"
-                >
-                  <PackagePlus className="h-3.5 w-3.5" />
-                  Add Trade-In Item
-                </button>
+                {/* Optional button to add a second/extra item if needed */}
+                <div className="flex justify-end pt-1">
+                  <button
+                    type="button"
+                    onClick={addAnotherTradeInItem}
+                    className="text-[11px] font-semibold text-amber-800 hover:text-amber-950 flex items-center gap-1 underline"
+                  >
+                    <Plus className="h-3 w-3" /> + Add Another Trade-In Item (if multiple)
+                  </button>
+                </div>
               </div>
 
-              {/* Trade-In Items List */}
+              {/* Added Trade-In Items List (if multiple items were added) */}
               {tradeInItems.length > 0 && (
                 <div className="space-y-1.5 border-t border-amber-200 pt-2">
+                  <p className="text-[11px] font-bold text-amber-900">List of Goods Received:</p>
                   {tradeInItems.map((ti) => (
                     <div key={ti.id} className="flex items-center justify-between rounded-lg bg-white border border-amber-200 px-2.5 py-1.5 text-[11px]">
                       <div>
@@ -999,12 +1028,6 @@ export default function POS() {
                       </div>
                     </div>
                   ))}
-                  {tradeInTotal > 0 && (
-                    <div className="flex justify-between rounded-lg bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-900">
-                      <span>Total Goods Received (Trade-In):</span>
-                      <span>- {formatCurrency(tradeInTotal)}</span>
-                    </div>
-                  )}
                 </div>
               )}
             </div>
@@ -1017,19 +1040,11 @@ export default function POS() {
                 <span>{formatCurrency(cartTotal)}</span>
               </div>
 
-              {/* Already-added trade-in items deduction */}
-              {tradeInTotal > 0 && (
+              {/* Total trade-in deduction */}
+              {allTradeInTotal > 0 && (
                 <div className="flex justify-between text-sm font-semibold text-amber-700">
-                  <span>Trade-In Deduction (Added Items):</span>
-                  <span>- {formatCurrency(tradeInTotal)}</span>
-                </div>
-              )}
-
-              {/* Live form preview deduction (current item being typed) */}
-              {liveFormValue > 0 && (
-                <div className="flex justify-between text-sm font-semibold text-amber-500">
-                  <span>Current Item (Live Preview):</span>
-                  <span>- {formatCurrency(liveFormValue)}</span>
+                  <span>Trade-In Goods Deduction:</span>
+                  <span>- {formatCurrency(allTradeInTotal)}</span>
                 </div>
               )}
 
