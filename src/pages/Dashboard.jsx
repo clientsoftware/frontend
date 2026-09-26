@@ -152,12 +152,54 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {/* Top Selling Products Today (if any sales today) */}
+      {summary?.topProductsToday && summary.topProductsToday.length > 0 && (
+        <Card className="mb-8" padding>
+          <div className="mb-4 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
+                <Package className="h-5 w-5" />
+              </div>
+              <div>
+                <h2 className="font-display text-lg font-semibold text-ink-900">
+                  Today's Top Selling Products (آج بکنے والے پروڈکٹس)
+                </h2>
+                <p className="text-xs text-ink-500">Products sold across POS and Credit Sales today</p>
+              </div>
+            </div>
+            <Badge variant="success">
+              {summary.topProductsToday.length} Product(s) Sold
+            </Badge>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {summary.topProductsToday.map((p, idx) => (
+              <div
+                key={idx}
+                className="flex flex-col justify-between rounded-xl border border-ink-200 bg-ink-50/40 p-3 hover:bg-white transition"
+              >
+                <div>
+                  <p className="font-bold text-ink-900 line-clamp-1">{p.name}</p>
+                  <p className="text-xs text-ink-500 mt-0.5">
+                    Qty Sold: <span className="font-semibold text-ink-800">{p.quantity} {p.unit}</span>
+                  </p>
+                </div>
+                <div className="mt-2 border-t border-ink-200/60 pt-1.5 flex justify-between items-center text-xs">
+                  <span className="text-ink-400">Total Value:</span>
+                  <span className="font-bold text-emerald-700">{formatCurrency(p.totalAmount)}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
       <div className="grid gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-2" padding>
           <div className="mb-4 flex items-center justify-between gap-2">
             <div>
-              <h2 className="font-display text-lg font-semibold text-ink-900">Recent Transactions</h2>
-              <p className="text-sm text-ink-500">Latest sales and payments</p>
+              <h2 className="font-display text-lg font-semibold text-ink-900">Recent Transactions & Sales</h2>
+              <p className="text-sm text-ink-500">Latest sales, items sold, and payments</p>
             </div>
             <Link to="/reports">
               <Button variant="ghost" size="sm" rightIcon={ArrowRight}>
@@ -194,26 +236,52 @@ export default function Dashboard() {
                     ? 'success'
                     : typeStr.includes('scrap')
                     ? 'soft'
-                    : 'outline';
+                    : typeStr.includes('credit')
+                    ? 'danger'
+                    : 'default';
                 return (
                   <li
                     key={tx._id}
-                    className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"
+                    className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 py-3 first:pt-0 last:pb-0"
                   >
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        <p className="truncate font-medium text-ink-800">
+                        <p className="font-semibold text-ink-900">
                           {tx.customerName || 'Walk-in Customer'}
                         </p>
                         <Badge variant={badgeVariant}>
                           {typeLabels[tx.type] || tx.type || 'Transaction'}
                         </Badge>
+                        {tx.invoiceNumber && (
+                          <span className="font-mono text-[10px] text-ink-400 bg-ink-100 px-1.5 py-0.5 rounded">
+                            {tx.invoiceNumber}
+                          </span>
+                        )}
                       </div>
-                      <p className="mt-0.5 text-xs text-ink-400">{formatDateTime(tx.createdAt)}</p>
+
+                      {/* Products / Items details inside this sale */}
+                      {tx.items && tx.items.length > 0 ? (
+                        <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-ink-600">
+                          <span className="text-ink-400 font-medium">📦 Items:</span>
+                          {tx.items.map((it, i) => (
+                            <span key={i} className="rounded bg-brand-50 px-1.5 py-0.5 text-[11px] font-medium text-brand-800">
+                              {it.name} ({it.quantity} {it.unit || 'x'})
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="mt-0.5 text-xs text-ink-400">{formatDateTime(tx.createdAt)}</p>
+                      )}
+
+                      {tx.items && tx.items.length > 0 && (
+                        <p className="mt-0.5 text-[11px] text-ink-400">{formatDateTime(tx.createdAt)}</p>
+                      )}
                     </div>
-                    <p className="shrink-0 font-semibold text-ink-900">
-                      {formatCurrency(tx.amount)}
-                    </p>
+                    <div className="text-right sm:shrink-0">
+                      <p className="font-bold text-ink-900 text-sm">
+                        {formatCurrency(tx.amount)}
+                      </p>
+                    </div>
                   </li>
                 );
               })}
