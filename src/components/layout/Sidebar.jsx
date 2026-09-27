@@ -17,6 +17,11 @@ import {
   Settings,
   X,
   ChevronLeft,
+  UserCheck,
+  Send,
+  Wallet,
+  UserSearch,
+  AlertTriangle,
 } from 'lucide-react';
 import { cn } from '../../utils/helpers';
 
@@ -30,9 +35,14 @@ const navItems = [
   { to: '/rates', label: 'Rate Management', icon: TrendingUp },
   { to: '/dispatch', label: 'Bulk Dispatch', icon: Truck },
   { to: '/customers', label: 'Customers', icon: Users },
+  { to: '/employees', label: 'HR, Staff & Payroll', icon: UserCheck },
+  { to: '/party-transfer', label: 'Party Transfer', icon: Send },
+  { to: '/cash-bank', label: 'Cash & Bank', icon: Wallet },
+  { to: '/cash-customer-history', label: 'Cash Customer History', icon: UserSearch },
+  { to: '/minus-stock', label: 'Minus Stock Warning', icon: AlertTriangle },
   { to: '/history', label: 'Order History', icon: History },
   { to: '/returns', label: 'Returns', icon: Undo2 },
-  { to: '/reports', label: 'Reports', icon: BarChart3 },
+  { to: '/reports', label: 'Reports & P&L', icon: BarChart3 },
   { to: '/notifications', label: 'Payment Alerts', icon: Bell },
   { to: '/settings', label: 'Settings', icon: Settings },
 ];
@@ -44,7 +54,7 @@ export default function Sidebar({ collapsed, mobileOpen, onCloseMobile, onToggle
     <div className="flex h-full flex-col">
       <div className="flex h-16 items-center gap-3 border-b border-white/10 px-4">
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-brand-400 to-brand-700 shadow-lg shadow-brand-900/30">
-          <span className="font-display text-sm font-bold text-white">CM</span>
+          <span className="font-display text-sm font-bold text-white">ES</span>
         </div>
         <AnimatePresence>
           {!collapsed && (
@@ -56,7 +66,7 @@ export default function Sidebar({ collapsed, mobileOpen, onCloseMobile, onToggle
             >
               <p className="whitespace-nowrap font-display text-base font-bold text-white">Electric Shop</p>
               <p className="whitespace-nowrap text-[10px] font-medium uppercase tracking-wider text-brand-200">
-                Trading & Billing
+                Trading &amp; Ledger System
               </p>
             </motion.div>
           )}
@@ -84,7 +94,7 @@ export default function Sidebar({ collapsed, mobileOpen, onCloseMobile, onToggle
               onClick={onCloseMobile}
               title={collapsed ? item.label : undefined}
               className={cn(
-                'group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-150',
+                'group relative flex items-center gap-3 rounded-xl px-3 py-2 text-xs font-semibold transition-all duration-150',
                 active
                   ? 'bg-white/15 text-white shadow-sm'
                   : 'text-brand-100/80 hover:bg-white/8 hover:text-white'
@@ -96,7 +106,7 @@ export default function Sidebar({ collapsed, mobileOpen, onCloseMobile, onToggle
                   className="absolute left-0 top-1/2 h-6 w-1 -translate-y-1/2 rounded-r-full bg-brand-300"
                 />
               )}
-              <Icon className={cn('h-[18px] w-[18px] shrink-0', active && 'text-brand-200')} />
+              <Icon className={cn('h-[17px] w-[17px] shrink-0', active && 'text-brand-200')} />
               {!collapsed && <span className="truncate">{item.label}</span>}
             </NavLink>
           );

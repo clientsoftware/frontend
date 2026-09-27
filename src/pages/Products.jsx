@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import {
   Plus,
   Pencil,
@@ -6,10 +6,13 @@ import {
   PackageMinus,
   MoreHorizontal,
   Barcode,
+  Printer,
+  Sparkles,
 } from 'lucide-react';
 import { productsAPI } from '../api/api';
 import { useToast } from '../context/ToastContext';
 import { formatCurrency, formatNumber, getErrorMessage } from '../utils/helpers';
+import { translateToUrduOnline } from '../utils/urduHelper';
 import Button from '../components/ui/Button';
 import Modal from '../components/ui/Modal';
 import Table from '../components/ui/Table';
@@ -19,15 +22,30 @@ import { PageHeader } from '../components/ui/Card';
 
 const emptyProduct = {
   name: '',
+  nameUrdu: '',
+  code: '',
   barcode: '',
   category: '',
-  primaryUnit: 'kg',
-  secondaryUnit: 'g',
-  conversionRate: 1000,
+  group: '',
+  primaryUnit: 'Pcs',
+  secondaryUnit: '',
+  conversionRate: 1,
+  altUnit: '',
+  altUnitFactor: '',
+  altUnitPrice: '',
   costPrice: '',
   salePrice: '',
+  wholesalePrice: '',
   currentStock: '',
   lowStockThreshold: 10,
+};
+
+const BARCODE_LABEL_SIZES = {
+  a4: { label: 'Sheet printer (A4/Letter, multiple per page)', width: 48, height: null, barcodeHeight: 34, scale: 1 },
+  '25x15': { label: '25mm x 15mm', width: 25, height: 15, barcodeHeight: 16, scale: 0.62 },
+  '40x30': { label: '40mm x 30mm', width: 40, height: 30, barcodeHeight: 26, scale: 0.85 },
+  '50x25': { label: '50mm x 25mm', width: 50, height: 25, barcodeHeight: 22, scale: 0.85 },
+  '58x40': { label: '58mm x 40mm (thermal roll)', width: 58, height: 40, barcodeHeight: 32, scale: 1 },
 };
 
 function extractList(res) {
@@ -54,11 +72,20 @@ export default function Products() {
   const [editingProduct, setEditingProduct] = useState(null);
   const [productForm, setProductForm] = useState(emptyProduct);
   const [savingProduct, setSavingProduct] = useState(false);
+  const [translatingUrdu, setTranslatingUrdu] = useState(false);
 
   const [stockModalOpen, setStockModalOpen] = useState(false);
   const [stockProduct, setStockProduct] = useState(null);
   const [stockForm, setStockForm] = useState({ type: 'add', quantity: '', reason: '' });
   const [adjustingStock, setAdjustingStock] = useState(false);
+
+  // Barcode Printer Modal
+  const [barcodeModalOpen, setBarcodeModalOpen] = useState(false);
+  const [barcodeItem, setBarcodeItem] = useState(null);
+  const [labelSize, setLabelSize] = useState('a4');
+  const [printQty, setPrintQty] = useState('1');
+
+  const translateTimer = useRef(null);
 
   const fetchProducts = useCallback(async () => {
     setLoading(true);
@@ -87,12 +114,6 @@ export default function Products() {
     [categories]
   );
 
-  const secondaryStock = useMemo(() => {
-    const stock = Number(productForm.currentStock) || 0;
-    const rate = Number(productForm.conversionRate) || 0;
-    return stock * rate;
-  }, [productForm.currentStock, productForm.conversionRate]);
-
   const openAddModal = () => {
     setEditingProduct(null);
     setProductForm(emptyProduct);
@@ -103,13 +124,20 @@ export default function Products() {
     setEditingProduct(product);
     setProductForm({
       name: product.name || '',
+      nameUrdu: product.nameUrdu || '',
+      code: product.code || '',
       barcode: product.barcode || '',
       category: product.category || '',
-      primaryUnit: product.primaryUnit || 'kg',
-      secondaryUnit: product.secondaryUnit || 'g',
-      conversionRate: product.conversionRate ?? 1000,
+      group: product.group || '',
+      primaryUnit: product.primaryUnit || 'Pcs',
+      secondaryUnit: product.secondaryUnit || '',
+      conversionRate: product.conversionRate ?? 1,
+      altUnit: product.altUnit || '',
+      altUnitFactor: product.altUnitFactor ?? '',
+      altUnitPrice: product.altUnitPrice ?? '',
       costPrice: product.costPrice ?? '',
       salePrice: product.salePrice ?? '',
+      wholesalePrice: product.wholesalePrice ?? '',
       currentStock: product.currentStock ?? '',
       lowStockThreshold: product.lowStockThreshold ?? 10,
     });
@@ -122,13 +150,31 @@ export default function Products() {
     setStockModalOpen(true);
   };
 
+  const handleProductNameChange = (e) => {
+    const val = e.target.value;
+    setProductForm((prev) => ({ ...prev, name: val }));
+
+    if (translateTimer.current) clearTimeout(translateTimer.current);
+    if (!val.trim()) {
+      setProductForm((prev) => ({ ...prev, nameUrdu: '' }));
+      return;
+    }
+
+    translateTimer.current = setTimeout(async () => {
+      setTranslatingUrdu(true);
+      const res = await translateToUrduOnline(val);
+      setTranslatingUrdu(false);
+      setProductForm((prev) => (prev.name === val ? { ...prev, nameUrdu: res } : prev));
+    }, 400);
+  };
+
   const handleProductFormChange = (e) => {
     const { name, value } = e.target;
     setProductForm((prev) => ({ ...prev, [name]: value }));
   };
 
   const handleSaveProduct = async (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
     if (!productForm.name.trim()) {
       toast.error('Product name is required');
       return;
@@ -136,13 +182,20 @@ export default function Products() {
 
     const payload = {
       name: productForm.name.trim(),
+      nameUrdu: productForm.nameUrdu.trim(),
+      code: productForm.code.trim(),
       barcode: productForm.barcode.trim(),
-      category: productForm.category.trim(),
-      primaryUnit: productForm.primaryUnit.trim() || 'kg',
-      secondaryUnit: productForm.secondaryUnit.trim() || 'g',
+      category: productForm.category.trim() || 'General',
+      group: productForm.group.trim(),
+      primaryUnit: productForm.primaryUnit.trim() || 'Pcs',
+      secondaryUnit: productForm.secondaryUnit.trim(),
       conversionRate: Number(productForm.conversionRate) || 1,
+      altUnit: productForm.altUnit.trim(),
+      altUnitFactor: Number(productForm.altUnitFactor) || 0,
+      altUnitPrice: Number(productForm.altUnitPrice) || 0,
       costPrice: Number(productForm.costPrice) || 0,
       salePrice: Number(productForm.salePrice) || 0,
+      wholesalePrice: Number(productForm.wholesalePrice) || 0,
       currentStock: Number(productForm.currentStock) || 0,
       lowStockThreshold: Number(productForm.lowStockThreshold) || 10,
     };
@@ -151,10 +204,10 @@ export default function Products() {
     try {
       if (editingProduct) {
         await productsAPI.update(editingProduct._id, payload);
-        toast.success('Product updated');
+        toast.success('Product updated successfully');
       } else {
         await productsAPI.create(payload);
-        toast.success('Product created');
+        toast.success('Product created successfully');
       }
       setProductModalOpen(false);
       fetchProducts();
@@ -168,14 +221,8 @@ export default function Products() {
   const handleAdjustStock = async (e) => {
     e.preventDefault();
     const qty = Number(stockForm.quantity);
-    if (!qty || qty <= 0) {
-      toast.error('Enter a valid quantity');
-      return;
-    }
-    if (!stockForm.reason.trim()) {
-      toast.error('Please provide a reason for adjustment');
-      return;
-    }
+    if (!qty || qty <= 0) return toast.error('Enter a valid quantity');
+    if (!stockForm.reason.trim()) return toast.error('Please provide a reason');
 
     setAdjustingStock(true);
     try {
@@ -194,6 +241,61 @@ export default function Products() {
     }
   };
 
+  const handlePrintBarcodes = () => {
+    if (!barcodeItem) return;
+    const count = Math.max(1, Number(printQty) || 1);
+    const sz = BARCODE_LABEL_SIZES[labelSize] || BARCODE_LABEL_SIZES.a4;
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Barcodes - ${barcodeItem.name}</title>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/JsBarcode/3.11.5/JsBarcode.all.min.js"></script>
+        <style>
+          @page { size: auto; margin: ${sz.height ? '3mm' : '6mm'}; }
+          body { font-family: Arial, sans-serif; display: flex; flex-wrap: wrap; gap: ${sz.height ? '2mm' : '6mm'}; margin: 0; padding: 10px; }
+          .label { width: ${sz.width}mm; ${sz.height ? `height: ${sz.height}mm; overflow: hidden;` : ''} padding: 4px; border: 1px dashed #666; text-align: center; page-break-inside: avoid; border-radius: 4px; }
+          .biz { font-size: ${Math.round(10 * sz.scale)}px; color: #444; }
+          .nm { font-size: ${Math.round(12 * sz.scale)}px; font-weight: bold; margin: 1px 0; word-break: break-word; line-height: 1.15; }
+          svg { max-width: 100%; height: ${sz.barcodeHeight}px; }
+          .code { font-size: ${Math.round(11 * sz.scale)}px; font-family: monospace; }
+          .price { font-size: ${Math.round(13 * sz.scale)}px; font-weight: bold; margin-top: 1px; color: #111; }
+        </style>
+      </head>
+      <body>
+        ${Array.from({ length: count })
+          .map(
+            (_, idx) => `
+          <div class="label">
+            <div class="biz">Electric Shop</div>
+            <div class="nm">${barcodeItem.name} ${barcodeItem.nameUrdu ? `(${barcodeItem.nameUrdu})` : ''}</div>
+            <svg id="bc-svg-${idx}"></svg>
+            <div class="price">Rs ${formatCurrency(barcodeItem.salePrice)}</div>
+          </div>
+        `
+          )
+          .join('')}
+        <script>
+          window.onload = function() {
+            const codeVal = "${(barcodeItem.barcode || barcodeItem.code || String(barcodeItem._id)).replace(/'/g, '')}";
+            for(let i=0; i<${count}; i++) {
+              try {
+                JsBarcode('#bc-svg-' + i, codeVal, { format: 'CODE128', width: 1.4, height: ${sz.barcodeHeight}, fontSize: 10, margin: 0 });
+              } catch(e) {}
+            }
+            setTimeout(function() { window.print(); }, 300);
+          };
+        </script>
+      </body>
+      </html>
+    `;
+
+    const win = window.open('', 'PRINT_BARCODES', 'width=800,height=600');
+    win.document.write(html);
+    win.document.close();
+  };
+
   const columns = [
     {
       key: 'name',
@@ -201,7 +303,8 @@ export default function Products() {
       sortable: true,
       render: (_, row) => (
         <div>
-          <p className="font-medium text-ink-900">{row.name}</p>
+          <p className="font-bold text-ink-900">{row.name}</p>
+          {row.nameUrdu && <p className="text-xs text-brand-700 font-semibold">{row.nameUrdu}</p>}
           <div className="flex items-center gap-2 mt-0.5">
             {row.category && <p className="text-xs text-ink-400">{row.category}</p>}
             {row.barcode && (
@@ -220,7 +323,7 @@ export default function Products() {
       sortable: true,
       render: (_, row) => (
         <span>
-          {formatNumber(row.currentStock, 2)} {row.primaryUnit || 'units'}
+          {formatNumber(row.currentStock, 2)} {row.primaryUnit || 'Pcs'}
         </span>
       ),
     },
@@ -255,9 +358,22 @@ export default function Products() {
     {
       key: 'actions',
       header: '',
-      className: 'w-28 text-right',
+      className: 'w-36 text-right',
       render: (_, row) => (
         <div className="flex items-center justify-end gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={(e) => {
+              e.stopPropagation();
+              setBarcodeItem(row);
+              setBarcodeModalOpen(true);
+            }}
+            title="Print Barcode Labels"
+          >
+            <Printer className="h-4 w-4 text-brand-700" />
+          </Button>
           <Button
             variant="ghost"
             size="icon"
@@ -290,8 +406,8 @@ export default function Products() {
   return (
     <div>
       <PageHeader
-        title="Products"
-        subtitle="Manage inventory, pricing, barcodes, and stock levels"
+        title="Products & Inventory (سامان اور اسٹاک)"
+        subtitle="Manage inventory, auto-Urdu translation, secondary units, pricing, and barcode label printing"
         actions={
           <Button leftIcon={Plus} onClick={openAddModal}>
             Add Product
@@ -303,8 +419,8 @@ export default function Products() {
         columns={columns}
         data={products}
         loading={loading}
-        searchPlaceholder="Search products by name, category, or barcode..."
-        searchKeys={['name', 'category', 'barcode']}
+        searchPlaceholder="Search products by name, Urdu name, category, or barcode..."
+        searchKeys={['name', 'nameUrdu', 'category', 'barcode']}
         emptyMessage="No products found. Add your first product to get started."
         toolbar={
           <Select
@@ -314,56 +430,13 @@ export default function Products() {
             className="w-44"
           />
         }
-        mobileCard={(row) => (
-          <div className="space-y-2">
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <p className="font-medium text-ink-900">{row.name}</p>
-                <div className="flex items-center gap-2 mt-0.5">
-                  <p className="text-xs text-ink-400">{row.category || 'Uncategorized'}</p>
-                  {row.barcode && (
-                    <span className="inline-flex items-center gap-1 font-mono text-[10px] text-ink-600 bg-ink-100 px-1.5 py-0.5 rounded">
-                      <Barcode className="h-3 w-3" /> {row.barcode}
-                    </span>
-                  )}
-                </div>
-              </div>
-              {getStockStatus(row) === 'low' ? (
-                <Badge variant="warning" dot>
-                  Low Stock
-                </Badge>
-              ) : (
-                <Badge variant="success" dot>
-                  In Stock
-                </Badge>
-              )}
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-ink-400">Stock</span>
-              <span className="font-medium">
-                {formatNumber(row.currentStock, 2)} {row.primaryUnit}
-              </span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-ink-400">Sale Price</span>
-              <span className="font-medium">{formatCurrency(row.salePrice)}</span>
-            </div>
-            <div className="flex gap-2 pt-1">
-              <Button size="sm" variant="outline" className="flex-1" onClick={() => openEditModal(row)}>
-                Edit
-              </Button>
-              <Button size="sm" variant="soft" className="flex-1" onClick={() => openStockModal(row)}>
-                Stock
-              </Button>
-            </div>
-          </div>
-        )}
       />
 
+      {/* Add / Edit Product Modal */}
       <Modal
         open={productModalOpen}
         onClose={() => setProductModalOpen(false)}
-        title={editingProduct ? 'Edit Product' : 'Add Product'}
+        title={editingProduct ? 'Edit Product' : 'Add New Product'}
         size="lg"
         footer={
           <>
@@ -379,15 +452,31 @@ export default function Products() {
         <form onSubmit={handleSaveProduct} className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <Input
-              label="Product Name"
+              label="Product Name (English / Roman) *"
               name="name"
               value={productForm.name}
-              onChange={handleProductFormChange}
-              placeholder="e.g. Copper Wire 2.5mm"
+              onChange={handleProductNameChange}
+              placeholder="e.g. Sunflower Oil 5L / Copper Wire"
               required
-              className="sm:col-span-2"
             />
-            
+
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-xs font-semibold uppercase tracking-wider text-ink-700 flex items-center gap-1">
+                  <Sparkles className="h-3.5 w-3.5 text-brand-600" />
+                  Urdu Name (خود بخود لکھا جائے گا)
+                </label>
+                {translatingUrdu && <span className="text-[10px] text-brand-600 italic">Translating...</span>}
+              </div>
+              <Input
+                name="nameUrdu"
+                value={productForm.nameUrdu}
+                onChange={handleProductFormChange}
+                placeholder="یہاں خود بخود آ جائے گا یا ٹائپ کریں"
+                className="text-right font-serif text-base"
+              />
+            </div>
+
             {/* Barcode Field with Auto-Generate */}
             <div className="sm:col-span-2 rounded-xl border border-ink-200 bg-ink-50/50 p-3">
               <div className="flex items-center justify-between mb-1.5">
@@ -419,7 +508,7 @@ export default function Products() {
               name="category"
               value={productForm.category}
               onChange={handleProductFormChange}
-              placeholder="e.g. Copper Wire"
+              placeholder="e.g. Electrical / Groceries"
               list="product-categories"
             />
             <datalist id="product-categories">
@@ -427,74 +516,154 @@ export default function Products() {
                 <option key={c} value={c} />
               ))}
             </datalist>
+
             <Input
-              label="Primary Unit"
+              label="Primary Unit *"
               name="primaryUnit"
               value={productForm.primaryUnit}
               onChange={handleProductFormChange}
-              placeholder="kg"
+              placeholder="Pcs / Kg / Box / Meter"
+              required
             />
+
             <Input
-              label="Secondary Unit"
-              name="secondaryUnit"
-              value={productForm.secondaryUnit}
-              onChange={handleProductFormChange}
-              placeholder="g"
-            />
-            <Input
-              label="Conversion Rate"
-              name="conversionRate"
-              type="number"
-              min="0"
-              step="any"
-              value={productForm.conversionRate}
-              onChange={handleProductFormChange}
-              hint={`1 ${productForm.primaryUnit || 'primary'} = ${productForm.conversionRate || 0} ${productForm.secondaryUnit || 'secondary'}`}
-            />
-            <Input
-              label="Low Stock Threshold"
-              name="lowStockThreshold"
-              type="number"
-              min="0"
-              value={productForm.lowStockThreshold}
-              onChange={handleProductFormChange}
-            />
-            <Input
-              label="Cost Price (PKR)"
+              label="Cost Price (PKR) *"
               name="costPrice"
               type="number"
               min="0"
               step="0.01"
               value={productForm.costPrice}
               onChange={handleProductFormChange}
+              required
             />
+
             <Input
-              label="Sale Price (PKR)"
+              label="Sale Price (PKR) *"
               name="salePrice"
               type="number"
               min="0"
               step="0.01"
               value={productForm.salePrice}
               onChange={handleProductFormChange}
+              required
             />
+
             <Input
-              label={`Current Stock (${productForm.primaryUnit || 'primary'})`}
+              label="Wholesale Price (Optional)"
+              name="wholesalePrice"
+              type="number"
+              min="0"
+              step="0.01"
+              value={productForm.wholesalePrice}
+              onChange={handleProductFormChange}
+              placeholder="Optional wholesale rate"
+            />
+
+            <Input
+              label="Current Stock Quantity"
               name="currentStock"
               type="number"
               min="0"
               step="any"
               value={productForm.currentStock}
               onChange={handleProductFormChange}
-              hint={
-                productForm.conversionRate
-                  ? `Secondary stock: ${formatNumber(secondaryStock, 2)} ${productForm.secondaryUnit || 'units'}`
-                  : undefined
-              }
             />
+
+            <Input
+              label="Low Stock Threshold Alert"
+              name="lowStockThreshold"
+              type="number"
+              min="0"
+              value={productForm.lowStockThreshold}
+              onChange={handleProductFormChange}
+            />
+
+            {/* Secondary Unit & Conversion Factor */}
+            <div className="sm:col-span-2 rounded-xl border border-brand-200 bg-brand-50/40 p-3 space-y-3">
+              <p className="text-xs font-bold text-brand-900">Secondary / Alt Unit Conversion (Optional)</p>
+              <div className="grid grid-cols-3 gap-2">
+                <Input
+                  label="Secondary Unit"
+                  name="altUnit"
+                  placeholder="e.g. Dozen / Pcs"
+                  value={productForm.altUnit}
+                  onChange={handleProductFormChange}
+                />
+                <Input
+                  label="1 Primary = Units"
+                  name="altUnitFactor"
+                  type="number"
+                  placeholder="12"
+                  value={productForm.altUnitFactor}
+                  onChange={handleProductFormChange}
+                />
+                <Input
+                  label="Secondary Unit Price"
+                  name="altUnitPrice"
+                  type="number"
+                  placeholder="Price per sec. unit"
+                  value={productForm.altUnitPrice}
+                  onChange={handleProductFormChange}
+                />
+              </div>
+            </div>
           </div>
         </form>
       </Modal>
 
+      {/* Barcode Printer Modal */}
+      <Modal
+        open={barcodeModalOpen}
+        onClose={() => setBarcodeModalOpen(false)}
+        title="Print Barcode Labels"
+        size="md"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setBarcodeModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button leftIcon={Printer} onClick={handlePrintBarcodes}>
+              Print Labels
+            </Button>
+          </>
+        }
+      >
+        {barcodeItem && (
+          <div className="space-y-4 py-2">
+            <div className="rounded-xl border border-ink-200 bg-ink-50 p-3">
+              <p className="font-bold text-ink-900">{barcodeItem.name}</p>
+              <p className="text-xs text-ink-500 font-mono">Barcode: {barcodeItem.barcode || 'N/A'}</p>
+              <p className="text-xs font-bold text-brand-700 mt-1">Price: Rs {formatCurrency(barcodeItem.salePrice)}</p>
+            </div>
+
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-ink-700">Select Label Printer Size</label>
+              <select
+                value={labelSize}
+                onChange={(e) => setLabelSize(e.target.value)}
+                className="h-10 w-full rounded-xl border border-ink-200 bg-white px-3 text-sm text-ink-900 outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-500/20"
+              >
+                {Object.entries(BARCODE_LABEL_SIZES).map(([key, sz]) => (
+                  <option key={key} value={key}>
+                    {sz.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <Input
+              label="Number of Labels to Print"
+              type="number"
+              min="1"
+              max="500"
+              value={printQty}
+              onChange={(e) => setPrintQty(e.target.value)}
+            />
+          </div>
+        )}
+      </Modal>
+
+      {/* Adjust Stock Modal */}
       <Modal
         open={stockModalOpen}
         onClose={() => setStockModalOpen(false)}
@@ -516,8 +685,7 @@ export default function Products() {
             <div className="rounded-xl border border-ink-100 bg-ink-50/80 px-4 py-3">
               <p className="font-medium text-ink-900">{stockProduct.name}</p>
               <p className="mt-1 text-sm text-ink-500">
-                Current: {formatNumber(stockProduct.currentStock, 2)}{' '}
-                {stockProduct.primaryUnit || 'units'}
+                Current: {formatNumber(stockProduct.currentStock, 2)} {stockProduct.primaryUnit || 'units'}
               </p>
             </div>
 
@@ -556,7 +724,7 @@ export default function Products() {
               name="reason"
               value={stockForm.reason}
               onChange={(e) => setStockForm((prev) => ({ ...prev, reason: e.target.value }))}
-              placeholder="e.g. New shipment received, damaged goods, stock count correction"
+              placeholder="e.g. New shipment received, stock count correction"
               required
             />
           </form>

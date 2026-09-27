@@ -339,6 +339,10 @@ export default function CreditSale() {
       toast.error('Customer name is required');
       return;
     }
+    if (!newCustPhone.trim()) {
+      toast.error('Phone number is required for Khata customer');
+      return;
+    }
     try {
       const res = await customersAPI.create({
         name: newCustName.trim(),
@@ -564,6 +568,7 @@ export default function CreditSale() {
     setSuccessOpen(false);
     setCompletedSale(null);
     resetSale();
+    setTimeout(() => searchInputRef.current?.focus(), 100);
   };
 
   return (
@@ -1167,10 +1172,11 @@ export default function CreditSale() {
             required
           />
           <Input
-            label="Phone Number (فون نمبر)"
-            placeholder="03XX-XXXXXXX"
+            label="Phone Number (فون نمبر) *"
+            placeholder="03XX-XXXXXXX (Required)"
             value={newCustPhone}
             onChange={(e) => setNewCustPhone(e.target.value)}
+            required
           />
           <Input
             label="Credit Limit (ادھار کی حد - Rs)"
@@ -1215,13 +1221,15 @@ export default function CreditSale() {
         title="Credit Invoice Completed"
         footer={
           <div className="no-print flex flex-wrap justify-end gap-2">
+            <Button variant="danger" leftIcon={X} onClick={handleSuccessClose}>
+              Close &amp; New Credit Sale (بند کریں)
+            </Button>
             <Button variant="outline" leftIcon={Printer} onClick={() => window.print()}>
               Print Udhaar Bill (رسید پرنٹ کریں)
             </Button>
             <Button variant="success" leftIcon={MessageCircle} onClick={handleWhatsApp}>
               Share on WhatsApp
             </Button>
-            <Button onClick={handleSuccessClose}>New Credit Sale (F1)</Button>
           </div>
         }
       >

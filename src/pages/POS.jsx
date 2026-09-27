@@ -307,6 +307,21 @@ export default function POS() {
       toast.error('Cart is empty. Please add items (F1 to search).');
       return false;
     }
+    if (customerMode === 'walkin') {
+      if (!walkInName.trim()) {
+        toast.error('Customer Name (گاہک کا نام) enter karna zaroori hai');
+        return false;
+      }
+      if (!walkInPhone.trim()) {
+        toast.error('Customer Phone Number (فون نمبر) enter karna zaroori hai');
+        return false;
+      }
+    } else if (customerMode === 'existing') {
+      if (!selectedCustomerId) {
+        toast.error('Khata / Existing customer select karein');
+        return false;
+      }
+    }
     return true;
   };
 
@@ -506,6 +521,7 @@ export default function POS() {
     setSuccessOpen(false);
     setCompletedSale(null);
     resetSale();
+    setTimeout(() => searchInputRef.current?.focus(), 100);
   };
 
   return (
@@ -754,14 +770,18 @@ export default function POS() {
                 <div className="grid gap-2 sm:grid-cols-2 pt-1">
                   <Input
                     ref={customerInputRef}
-                    placeholder="Customer Name (Optional)"
+                    label="Customer Name *"
+                    placeholder="Customer Name (Required) *"
                     value={walkInName}
                     onChange={(e) => setWalkInName(e.target.value)}
+                    required
                   />
                   <Input
-                    placeholder="Phone No (Optional)"
+                    label="Phone No *"
+                    placeholder="Phone No (Required) *"
                     value={walkInPhone}
                     onChange={(e) => setWalkInPhone(e.target.value)}
+                    required
                   />
                 </div>
               ) : (
@@ -1084,13 +1104,15 @@ export default function POS() {
         size="md"
         footer={
           <div className="no-print flex flex-wrap justify-end gap-2">
+            <Button variant="danger" leftIcon={X} onClick={handleSuccessClose}>
+              Close &amp; New Sale (بند کریں / F1)
+            </Button>
             <Button variant="outline" leftIcon={Printer} onClick={() => window.print()}>
               Print Receipt
             </Button>
             <Button variant="success" leftIcon={MessageCircle} onClick={handleWhatsApp}>
               Share WhatsApp
             </Button>
-            <Button onClick={handleSuccessClose}>New Sale (F1)</Button>
           </div>
         }
       >

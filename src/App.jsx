@@ -19,6 +19,11 @@ import Reports from './pages/Reports';
 import PaymentNotifications from './pages/PaymentNotifications';
 import Settings from './pages/Settings';
 import OrderHistory from './pages/OrderHistory';
+import Employees from './pages/Employees';
+import PartyTransfer from './pages/PartyTransfer';
+import CashBank from './pages/CashBank';
+import CashCustomerHistory from './pages/CashCustomerHistory';
+import MinusStock from './pages/MinusStock';
 
 export default function App() {
   return (
@@ -49,6 +54,11 @@ export default function App() {
               <Route path="reports" element={<Reports />} />
               <Route path="notifications" element={<PaymentNotifications />} />
               <Route path="settings" element={<Settings />} />
+              <Route path="employees" element={<Employees />} />
+              <Route path="party-transfer" element={<PartyTransfer />} />
+              <Route path="cash-bank" element={<CashBank />} />
+              <Route path="cash-customer-history" element={<CashCustomerHistory />} />
+              <Route path="minus-stock" element={<MinusStock />} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

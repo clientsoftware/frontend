@@ -8,6 +8,8 @@ import {
   Plus,
   Trash2,
   Save,
+  Palette,
+  Printer,
 } from 'lucide-react';
 import { settingsAPI } from '../api/api';
 import { useToast } from '../context/ToastContext';
@@ -20,10 +22,20 @@ import { Input, Textarea, Select } from '../components/ui/Input';
 
 const TABS = [
   { id: 'business', label: 'Business Profile', icon: Building2 },
-  { id: 'invoice', label: 'Invoice Template', icon: FileText },
+  { id: 'invoice', label: 'Invoice & Print Settings', icon: FileText },
+  { id: 'theme', label: 'App Themes', icon: Palette },
   { id: 'units', label: 'Units', icon: Ruler },
   { id: 'categories', label: 'Categories', icon: Tags },
   { id: 'users', label: 'Staff / Users', icon: Users },
+];
+
+const THEME_OPTIONS = [
+  { id: 'blue', label: 'Professional Blue', color: '#2563eb' },
+  { id: 'dark', label: 'Dark Mode', color: '#1e293b' },
+  { id: 'green', label: 'Business Green', color: '#059669' },
+  { id: 'purple', label: 'Modern Purple', color: '#7c3aed' },
+  { id: 'maroon', label: 'Classic Maroon', color: '#991b1b' },
+  { id: 'teal', label: 'Fresh Teal', color: '#0d9488' },
 ];
 
 function extractList(res) {
@@ -50,6 +62,10 @@ export default function Settings() {
     address: '',
     gstin: '',
     city: '',
+    colorTheme: 'blue',
+    printFormat: 'regular',
+    thermalWidth: '80',
+    saleInvoiceLabel: 'Sale Invoice',
   });
 
   const [invoice, setInvoice] = useState({
@@ -111,7 +127,7 @@ export default function Settings() {
     setSaving(true);
     try {
       await settingsAPI.updateBusiness(business);
-      toast.success('Business profile saved');
+      toast.success('Business profile & print settings saved');
     } catch (err) {
       toast.error(getErrorMessage(err));
     } finally {
@@ -215,7 +231,7 @@ export default function Settings() {
 
   return (
     <div>
-      <PageHeader title="Settings" subtitle="Business profile, templates, units & staff" />
+      <PageHeader title="Settings" subtitle="Business profile, print templates, app color themes &amp; staff" />
 
       <div className="mb-6 flex gap-1 overflow-x-auto rounded-2xl border border-ink-200 bg-white p-1 scrollbar-thin">
         {TABS.map((t) => {
@@ -261,7 +277,7 @@ export default function Settings() {
               onChange={(e) => setBusiness((b) => ({ ...b, email: e.target.value }))}
             />
             <Input
-              label="GSTIN"
+              label="GSTIN / NTN"
               value={business.gstin || ''}
               onChange={(e) => setBusiness((b) => ({ ...b, gstin: e.target.value }))}
             />
@@ -287,43 +303,96 @@ export default function Settings() {
       )}
 
       {tab === 'invoice' && (
-        <Card>
-          <h3 className="mb-4 font-display text-lg font-semibold text-ink-900">Invoice Template</h3>
+        <Card className="space-y-4">
+          <h3 className="font-display text-lg font-semibold text-ink-900">Invoice &amp; Printing Format</h3>
           <div className="grid gap-4 sm:grid-cols-2">
             <Input
               label="Invoice Prefix"
               value={invoice.prefix || ''}
               onChange={(e) => setInvoice((i) => ({ ...i, prefix: e.target.value }))}
             />
-            <div className="flex items-end pb-1">
-              <label className="flex items-center gap-2 text-sm text-ink-700">
-                <input
-                  type="checkbox"
-                  checked={!!invoice.showLogo}
-                  onChange={(e) => setInvoice((i) => ({ ...i, showLogo: e.target.checked }))}
-                  className="h-4 w-4 rounded border-ink-300 text-brand-600 focus:ring-brand-500"
-                />
-                Show business logo on invoices
-              </label>
+
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-ink-700">Sale Invoice Title Label</label>
+              <select
+                value={business.saleInvoiceLabel || 'Sale Invoice'}
+                onChange={(e) => setBusiness((b) => ({ ...b, saleInvoiceLabel: e.target.value }))}
+                className="h-10 w-full rounded-xl border border-ink-200 bg-white px-3 text-sm text-ink-900 outline-none focus:border-brand-400"
+              >
+                <option value="Sale Invoice">Sale Invoice</option>
+                <option value="Estimate Invoice">Estimate Invoice</option>
+                <option value="Quotation">Quotation</option>
+              </select>
             </div>
+
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-ink-700">Print Format</label>
+              <select
+                value={business.printFormat || 'regular'}
+                onChange={(e) => setBusiness((b) => ({ ...b, printFormat: e.target.value }))}
+                className="h-10 w-full rounded-xl border border-ink-200 bg-white px-3 text-sm text-ink-900 outline-none focus:border-brand-400"
+              >
+                <option value="regular">Regular Printer (A4 / A5 / Letter)</option>
+                <option value="thermal">Thermal POS Receipt Printer</option>
+              </select>
+            </div>
+
+            {business.printFormat === 'thermal' && (
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-ink-700">Thermal Roll Width</label>
+                <select
+                  value={business.thermalWidth || '80'}
+                  onChange={(e) => setBusiness((b) => ({ ...b, thermalWidth: e.target.value }))}
+                  className="h-10 w-full rounded-xl border border-ink-200 bg-white px-3 text-sm text-ink-900 outline-none focus:border-brand-400"
+                >
+                  <option value="80">80mm Thermal Paper</option>
+                  <option value="58">58mm Thermal Paper</option>
+                </select>
+              </div>
+            )}
+
             <div className="sm:col-span-2">
               <Textarea
-                label="Footer Note"
-                value={invoice.footerNote || ''}
-                onChange={(e) => setInvoice((i) => ({ ...i, footerNote: e.target.value }))}
-              />
-            </div>
-            <div className="sm:col-span-2">
-              <Textarea
-                label="Terms & Conditions"
+                label="Terms &amp; Conditions"
                 value={invoice.terms || ''}
                 onChange={(e) => setInvoice((i) => ({ ...i, terms: e.target.value }))}
               />
             </div>
           </div>
+          <div className="mt-5 flex gap-2">
+            <Button leftIcon={Save} loading={saving} onClick={saveBusiness}>
+              Save Print Settings
+            </Button>
+            <Button variant="outline" leftIcon={Save} loading={saving} onClick={saveInvoice}>
+              Save Invoice Template
+            </Button>
+          </div>
+        </Card>
+      )}
+
+      {tab === 'theme' && (
+        <Card className="space-y-4">
+          <h3 className="font-display text-lg font-semibold text-ink-900">App Color Themes</h3>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {THEME_OPTIONS.map((theme) => (
+              <div
+                key={theme.id}
+                onClick={() => setBusiness((b) => ({ ...b, colorTheme: theme.id }))}
+                className={cn(
+                  'flex items-center gap-3 rounded-xl border p-4 cursor-pointer transition',
+                  business.colorTheme === theme.id
+                    ? 'border-brand-600 bg-brand-50/60 shadow-sm'
+                    : 'border-ink-200 bg-white hover:border-ink-300'
+                )}
+              >
+                <div className="h-6 w-6 rounded-lg shadow-sm" style={{ backgroundColor: theme.color }} />
+                <span className="font-bold text-sm text-ink-900">{theme.label}</span>
+              </div>
+            ))}
+          </div>
           <div className="mt-5">
-            <Button leftIcon={Save} loading={saving} onClick={saveInvoice}>
-              Save Template
+            <Button leftIcon={Save} loading={saving} onClick={saveBusiness}>
+              Save Color Theme
             </Button>
           </div>
         </Card>
@@ -364,14 +433,14 @@ export default function Settings() {
       {tab === 'categories' && (
         <Card>
           <div className="mb-4 flex items-center justify-between">
-            <h3 className="font-display text-lg font-semibold text-ink-900">Categories</h3>
+            <h3 className="font-display text-lg font-semibold text-ink-900">Product Categories</h3>
             <Button size="sm" leftIcon={Plus} onClick={() => setCatModal(true)}>
               Add Category
             </Button>
           </div>
           <div className="flex flex-wrap gap-2">
             {categories.length === 0 ? (
-              <p className="text-sm text-ink-400">No categories. Add Copper, Scrap, etc.</p>
+              <p className="text-sm text-ink-400">No categories yet.</p>
             ) : (
               categories.map((c) => (
                 <span
@@ -401,28 +470,28 @@ export default function Settings() {
               Add User
             </Button>
           </div>
-          <div className="divide-y divide-ink-100">
+          <div className="space-y-2">
             {users.length === 0 ? (
-              <p className="py-6 text-sm text-ink-400">No staff users yet.</p>
+              <p className="text-sm text-ink-400">No extra users.</p>
             ) : (
               users.map((u) => (
                 <div
                   key={u._id || u.id}
-                  className="flex items-center justify-between gap-3 py-3"
+                  className="flex items-center justify-between rounded-xl border border-ink-100 bg-ink-50/50 p-3"
                 >
                   <div>
                     <p className="font-medium text-ink-900">{u.name}</p>
                     <p className="text-xs text-ink-400">{u.email}</p>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Badge variant="brand">{u.role || 'staff'}</Badge>
-                    <Button
-                      size="xs"
-                      variant="ghost"
+                    <Badge variant={u.role === 'admin' ? 'success' : 'default'}>{u.role}</Badge>
+                    <button
+                      type="button"
                       onClick={() => removeUser(u._id || u.id)}
+                      className="rounded p-1 text-ink-400 hover:text-danger-600"
                     >
-                      <Trash2 className="h-4 w-4 text-danger-500" />
-                    </Button>
+                      <Trash2 className="h-4 w-4" />
+                    </button>
                   </div>
                 </div>
               ))
@@ -431,98 +500,82 @@ export default function Settings() {
         </Card>
       )}
 
-      <Modal
-        open={unitModal}
-        onClose={() => setUnitModal(false)}
-        title="Add Unit"
-        footer={
-          <>
+      {/* Modals */}
+      <Modal open={unitModal} onClose={() => setUnitModal(false)} title="Add Unit">
+        <form onSubmit={addUnit} className="space-y-4">
+          <Input
+            label="Unit Name"
+            value={unitName}
+            onChange={(e) => setUnitName(e.target.value)}
+            placeholder="e.g. Kg, Pcs, Meter"
+            required
+          />
+          <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => setUnitModal(false)}>
               Cancel
             </Button>
-            <Button onClick={addUnit}>Add</Button>
-          </>
-        }
-      >
-        <form onSubmit={addUnit}>
-          <Input
-            label="Unit Name"
-            required
-            placeholder="e.g. Kg, Box, Pieces"
-            value={unitName}
-            onChange={(e) => setUnitName(e.target.value)}
-          />
+            <Button type="submit">Add Unit</Button>
+          </div>
         </form>
       </Modal>
 
-      <Modal
-        open={catModal}
-        onClose={() => setCatModal(false)}
-        title="Add Category"
-        footer={
-          <>
+      <Modal open={catModal} onClose={() => setCatModal(false)} title="Add Category">
+        <form onSubmit={addCategory} className="space-y-4">
+          <Input
+            label="Category Name"
+            value={catName}
+            onChange={(e) => setCatName(e.target.value)}
+            placeholder="e.g. Electrical, Copper"
+            required
+          />
+          <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => setCatModal(false)}>
               Cancel
             </Button>
-            <Button onClick={addCategory}>Add</Button>
-          </>
-        }
-      >
-        <form onSubmit={addCategory}>
-          <Input
-            label="Category Name"
-            required
-            placeholder="e.g. Copper, Scrap"
-            value={catName}
-            onChange={(e) => setCatName(e.target.value)}
-          />
+            <Button type="submit">Add Category</Button>
+          </div>
         </form>
       </Modal>
 
-      <Modal
-        open={userModal}
-        onClose={() => setUserModal(false)}
-        title="Add Staff User"
-        footer={
-          <>
-            <Button variant="outline" onClick={() => setUserModal(false)}>
-              Cancel
-            </Button>
-            <Button onClick={addUser}>Create</Button>
-          </>
-        }
-      >
+      <Modal open={userModal} onClose={() => setUserModal(false)} title="Add User">
         <form onSubmit={addUser} className="space-y-4">
           <Input
             label="Name"
-            required
             value={userForm.name}
-            onChange={(e) => setUserForm((f) => ({ ...f, name: e.target.value }))}
+            onChange={(e) => setUserForm((u) => ({ ...u, name: e.target.value }))}
+            required
           />
           <Input
             label="Email"
             type="email"
-            required
             value={userForm.email}
-            onChange={(e) => setUserForm((f) => ({ ...f, email: e.target.value }))}
+            onChange={(e) => setUserForm((u) => ({ ...u, email: e.target.value }))}
+            required
           />
           <Input
             label="Password"
             type="password"
-            required
             value={userForm.password}
-            onChange={(e) => setUserForm((f) => ({ ...f, password: e.target.value }))}
+            onChange={(e) => setUserForm((u) => ({ ...u, password: e.target.value }))}
+            required
           />
-          <Select
-            label="Role"
-            value={userForm.role}
-            onChange={(e) => setUserForm((f) => ({ ...f, role: e.target.value }))}
-            options={[
-              { value: 'admin', label: 'Admin' },
-              { value: 'staff', label: 'Staff' },
-              { value: 'cashier', label: 'Cashier' },
-            ]}
-          />
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-ink-700">Role</label>
+            <select
+              value={userForm.role}
+              onChange={(e) => setUserForm((u) => ({ ...u, role: e.target.value }))}
+              className="h-10 w-full rounded-xl border border-ink-200 bg-white px-3 text-sm text-ink-900 outline-none"
+            >
+              <option value="staff">Staff / Cashier</option>
+              <option value="admin">Admin / Owner</option>
+            </select>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setUserModal(false)}>
+              Cancel
+            </Button>
+            <Button type="submit">Create User</Button>
+          </div>
         </form>
       </Modal>
     </div>

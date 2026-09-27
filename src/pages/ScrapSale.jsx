@@ -12,6 +12,7 @@ import {
   CreditCard,
   Banknote,
   Wallet,
+  X,
 } from 'lucide-react';
 import { scrapAPI, productsAPI, customersAPI } from '../api/api';
 import { useToast } from '../context/ToastContext';
@@ -271,13 +272,15 @@ export default function ScrapSale() {
         return false;
       }
     }
-    if (effectiveCredit > 0 && !customerId && !walkInName.trim()) {
-      toast.error('Select or enter a customer for credit sales');
-      return false;
-    }
-    if (!customerId && walkInPhone.trim() && !walkInName.trim()) {
-      toast.error('Enter customer name when adding a phone number');
-      return false;
+    if (!customerId) {
+      if (!walkInName.trim()) {
+        toast.error('Customer Name (گاہک کا نام) enter karna zaroori hai');
+        return false;
+      }
+      if (!walkInPhone.trim()) {
+        toast.error('Customer Phone Number (فون نمبر) enter karna zaroori hai');
+        return false;
+      }
     }
     return true;
   };
@@ -615,16 +618,18 @@ export default function ScrapSale() {
                 </p>
                 <div className="grid gap-2 sm:grid-cols-2">
                   <Input
-                    label="Customer Name"
-                    placeholder="e.g. Ahmed Khan"
+                    label="Customer Name *"
+                    placeholder="e.g. Ahmed Khan (Required)"
                     value={walkInName}
                     onChange={(e) => setWalkInName(e.target.value)}
+                    required
                   />
                   <Input
-                    label="Phone Number"
-                    placeholder="03XX-XXXXXXX"
+                    label="Phone Number *"
+                    placeholder="03XX-XXXXXXX (Required)"
                     value={walkInPhone}
                     onChange={(e) => setWalkInPhone(e.target.value)}
+                    required
                   />
                 </div>
               </div>
@@ -743,13 +748,15 @@ export default function ScrapSale() {
         size="md"
         footer={
           <div className="no-print flex flex-wrap justify-end gap-2">
+            <Button variant="danger" leftIcon={X} onClick={handleSuccessClose}>
+              Close &amp; New Sale (بند کریں)
+            </Button>
             <Button variant="outline" leftIcon={Printer} onClick={() => window.print()}>
               Print
             </Button>
             <Button variant="success" leftIcon={MessageCircle} onClick={handleWhatsApp}>
               Share WhatsApp
             </Button>
-            <Button onClick={handleSuccessClose}>New Sale</Button>
           </div>
         }
       >

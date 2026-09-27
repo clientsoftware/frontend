@@ -20,6 +20,9 @@ import {
   Trash2,
   Calculator,
   Receipt,
+  Keyboard,
+  Save,
+  CheckCircle2,
 } from 'lucide-react';
 import { exchangeAPI, productsAPI, customersAPI } from '../api/api';
 import { useToast } from '../context/ToastContext';
@@ -200,23 +203,17 @@ export default function Exchange() {
   const [walkInName, setWalkInName] = useState('');
   const [walkInPhone, setWalkInPhone] = useState('');
 
-  // Item Given (جو مال دیا / بھیجا)
-  const [givenProductId, setGivenProductId] = useState('');
-  const [givenProductName, setGivenProductName] = useState('');
-  const [givenQty, setGivenQty] = useState('');
-  const [givenRate, setGivenRate] = useState('');
-
-  // Item Received (جو مال ملا / وصول کیا)
-  const [receivedProductId, setReceivedProductId] = useState('');
-  const [receivedProductName, setReceivedProductName] = useState('');
-  const [receivedQty, setReceivedQty] = useState('');
-  const [receivedRate, setReceivedRate] = useState('');
-
-  // Extra Charges / Custom Prices (خالی باکسز - اپنی مرضی سے ایکسٹرا پرائس یا کٹوتی شامل کرنے کے لیے)
-  const [extraCharges, setExtraCharges] = useState([
-    { id: '1', label: 'Labour / Mazdoori (مزدوری)', amount: '', type: 'add' },
-    { id: '2', label: 'Freight / Gari Kiraya (کرایہ)', amount: '', type: 'add' },
+  // Items Given List (جو مال دیا / بھیجا)
+  const [givenItems, setGivenItems] = useState([
+    { id: '1', productId: '', productName: '', quantity: '', rate: '', labour: '', extraCharge: '', katoti: '' },
   ]);
+
+  // Items Received List (جو مال ملا / وصول کیا)
+  const [receivedItems, setReceivedItems] = useState([
+    { id: '1', productId: '', productName: '', quantity: '', rate: '', sentQuantity: '', actualReceivedQuantity: '', labour: '', extraCharge: '', katoti: '' },
+  ]);
+
+
 
   // Dispatch / Weight Loss Tracking (Optional when dealing with dispatch/mills)
   const [trackWeightShortage, setTrackWeightShortage] = useState(false);
@@ -231,8 +228,8 @@ export default function Exchange() {
   const [successOpen, setSuccessOpen] = useState(false);
   const [completedExchange, setCompletedExchange] = useState(null);
 
-  const fetchData = useCallback(async () => {
-    setLoading(true);
+  const fetchData = useCallback(async (showLoader = false) => {
+    if (showLoader) setLoading(true);
     try {
       const [productsRes, customersRes] = await Promise.all([
         productsAPI.getAll(),
@@ -243,12 +240,12 @@ export default function Exchange() {
     } catch (err) {
       toast.error(getErrorMessage(err, 'Failed to load products and customers data'));
     } finally {
-      setLoading(false);
+      if (showLoader) setLoading(false);
     }
   }, [toast]);
 
   useEffect(() => {
-    fetchData();
+    fetchData(true);
   }, [fetchData]);
 
   // Product options available for both Given and Received
@@ -274,114 +271,138 @@ export default function Exchange() {
     [customers]
   );
 
-  const selectedGivenProduct = useMemo(
-    () => products.find((p) => p._id === givenProductId),
-    [products, givenProductId]
-  );
-
-  const selectedReceivedProduct = useMemo(
-    () => products.find((p) => p._id === receivedProductId),
-    [products, receivedProductId]
-  );
-
-  const selectedCustomer = useMemo(
-    () => customers.find((c) => c._id === customerId) || null,
-    [customers, customerId]
-  );
-
-  // Extra charges helpers
-  const addExtraCharge = () => {
-    setExtraCharges((prev) => [
+  // Multi-item given helpers
+  const addGivenItem = () => {
+    setGivenItems((prev) => [
       ...prev,
-      { id: String(Date.now()), label: '', amount: '', type: 'add' },
+      { id: String(Date.now()), productId: '', productName: '', quantity: '', rate: '', labour: '', extraCharge: '', katoti: '' },
     ]);
   };
 
-  const updateExtraCharge = (id, field, value) => {
-    setExtraCharges((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, [field]: value } : item))
+  const updateGivenItem = (id, field, value) => {
+    setGivenItems((prev) =>
+      prev.map((item) => {
+        if (item.id !== id) return item;
+        const updated = { ...item, [field]: value };
+        if (field === 'productId') {
+          if (value) {
+            const product = products.find((p) => p._id === value);
+            updated.productName = product?.name || '';
+            if (product?.salePrice != null && (!updated.rate || updated.rate === '0')) {
+              updated.rate = String(product.salePrice);
+            }
+          }
+        }
+        return updated;
+      })
     );
   };
 
-  const removeExtraCharge = (id) => {
-    setExtraCharges((prev) => prev.filter((item) => item.id !== id));
+  const removeGivenItem = (id) => {
+    setGivenItems((prev) => (prev.length > 1 ? prev.filter((item) => item.id !== id) : prev));
+  };
+
+  // Multi-item received helpers
+  const addReceivedItem = () => {
+    setReceivedItems((prev) => [
+      ...prev,
+      { id: String(Date.now()), productId: '', productName: '', quantity: '', rate: '', sentQuantity: '', actualReceivedQuantity: '', labour: '', extraCharge: '', katoti: '' },
+    ]);
+  };
+
+  const updateReceivedItem = (id, field, value) => {
+    setReceivedItems((prev) =>
+      prev.map((item) => {
+        if (item.id !== id) return item;
+        const updated = { ...item, [field]: value };
+        if (field === 'productId') {
+          if (value) {
+            const product = products.find((p) => p._id === value);
+            updated.productName = product?.name || '';
+            if (product?.salePrice != null && (!updated.rate || updated.rate === '0')) {
+              updated.rate = String(product.salePrice);
+            }
+          }
+        }
+        return updated;
+      })
+    );
+  };
+
+  const removeReceivedItem = (id) => {
+    setReceivedItems((prev) => (prev.length > 1 ? prev.filter((item) => item.id !== id) : prev));
   };
 
   // Calculations
+  const givenBaseValue = useMemo(() => {
+    return givenItems.reduce((sum, item) => {
+      const qty = Number(item.quantity) || 0;
+      const rate = Number(item.rate) || 0;
+      return sum + qty * rate;
+    }, 0);
+  }, [givenItems]);
+
   const givenValue = useMemo(() => {
-    const qty = Number(givenQty) || 0;
-    const rate = Number(givenRate) || 0;
-    return qty * rate;
-  }, [givenQty, givenRate]);
+    return givenItems.reduce((sum, item) => {
+      const qty = Number(item.quantity) || 0;
+      const rate = Number(item.rate) || 0;
+      const labour = Number(item.labour) || 0;
+      const extra = Number(item.extraCharge) || 0;
+      const katoti = Number(item.katoti) || 0;
+      return sum + (qty * rate) + labour + extra - katoti;
+    }, 0);
+  }, [givenItems]);
+
+  const receivedBaseValue = useMemo(() => {
+    return receivedItems.reduce((sum, item) => {
+      const effectiveQty =
+        trackWeightShortage && item.actualReceivedQuantity !== ''
+          ? Number(item.actualReceivedQuantity) || 0
+          : Number(item.quantity) || 0;
+      const rate = Number(item.rate) || 0;
+      return sum + effectiveQty * rate;
+    }, 0);
+  }, [receivedItems, trackWeightShortage]);
 
   const receivedValue = useMemo(() => {
-    const effectiveQty =
-      trackWeightShortage && actualReceivedQuantity !== ''
-        ? Number(actualReceivedQuantity) || 0
-        : Number(receivedQty) || 0;
-    const rate = Number(receivedRate) || 0;
-    return effectiveQty * rate;
-  }, [receivedQty, actualReceivedQuantity, trackWeightShortage, receivedRate]);
-
-  // Total Extra Charges Sum (+ / -)
-  const totalExtraCharges = useMemo(() => {
-    return extraCharges.reduce((sum, item) => {
-      const val = Number(item.amount) || 0;
-      if (val === 0) return sum;
-      return item.type === 'deduct' ? sum - val : sum + val;
+    return receivedItems.reduce((sum, item) => {
+      const effectiveQty =
+        trackWeightShortage && item.actualReceivedQuantity !== ''
+          ? Number(item.actualReceivedQuantity) || 0
+          : Number(item.quantity) || 0;
+      const rate = Number(item.rate) || 0;
+      const labour = Number(item.labour) || 0;
+      const extra = Number(item.extraCharge) || 0;
+      const katoti = Number(item.katoti) || 0;
+      return sum + (effectiveQty * rate) + labour + extra - katoti;
     }, 0);
-  }, [extraCharges]);
+  }, [receivedItems, trackWeightShortage]);
+
+  // Total Extra Charges Sum
+  const totalExtraCharges = useMemo(() => {
+    const givenExtras = givenItems.reduce((sum, item) => sum + (Number(item.labour) || 0) + (Number(item.extraCharge) || 0) - (Number(item.katoti) || 0), 0);
+    const receivedExtras = receivedItems.reduce((sum, item) => sum + (Number(item.labour) || 0) + (Number(item.extraCharge) || 0) - (Number(item.katoti) || 0), 0);
+    return receivedExtras - givenExtras;
+  }, [givenItems, receivedItems]);
 
   // Base exchange difference (Received - Given)
-  const baseBalance = useMemo(() => receivedValue - givenValue, [receivedValue, givenValue]);
+  const baseBalance = useMemo(() => receivedBaseValue - givenBaseValue, [receivedBaseValue, givenBaseValue]);
 
-  // Final Net Balance including extra charges/deductions
-  const netBalance = useMemo(() => baseBalance + totalExtraCharges, [baseBalance, totalExtraCharges]);
+  // Final Net Balance
+  const netBalance = useMemo(() => receivedValue - givenValue, [receivedValue, givenValue]);
 
-  const handleGivenProductChange = (id, name) => {
-    setGivenProductId(id);
-    if (id) {
-      const product = products.find((p) => p._id === id);
-      setGivenProductName(product?.name || name || '');
-      if (product?.salePrice != null && (!givenRate || givenRate === '0')) {
-        setGivenRate(String(product.salePrice));
-      }
-    } else {
-      setGivenProductName(name || '');
-    }
-  };
-
-  const handleReceivedProductChange = (id, name) => {
-    setReceivedProductId(id);
-    if (id) {
-      const product = products.find((p) => p._id === id);
-      setReceivedProductName(product?.name || name || '');
-      if (product?.salePrice != null && (!receivedRate || receivedRate === '0')) {
-        setReceivedRate(String(product.salePrice));
-      }
-    } else {
-      setReceivedProductName(name || '');
-    }
-  };
-
-  const resetForm = () => {
+  const resetForm = useCallback(() => {
     setPartyType('customer');
     setCompanyName('');
     setDeliveryMethod('self');
     setCustomerId('');
     setWalkInName('');
     setWalkInPhone('');
-    setGivenProductId('');
-    setGivenProductName('');
-    setGivenQty('');
-    setGivenRate('');
-    setReceivedProductId('');
-    setReceivedProductName('');
-    setReceivedQty('');
-    setReceivedRate('');
-    setExtraCharges([
-      { id: '1', label: 'Labour / Mazdoori (مزدوری)', amount: '', type: 'add' },
-      { id: '2', label: 'Freight / Gari Kiraya (کرایہ)', amount: '', type: 'add' },
+    setGivenItems([
+      { id: String(Date.now()), productId: '', productName: '', quantity: '', rate: '', labour: '', extraCharge: '', katoti: '' },
+    ]);
+    setReceivedItems([
+      { id: String(Date.now() + 1), productId: '', productName: '', quantity: '', rate: '', sentQuantity: '', actualReceivedQuantity: '', labour: '', extraCharge: '', katoti: '' },
     ]);
     setTrackWeightShortage(false);
     setSentQuantity('');
@@ -390,32 +411,34 @@ export default function Exchange() {
     setDriverName('');
     setDriverPhone('');
     setNotes('');
-  };
+  }, []);
 
   const validate = () => {
-    if (!givenProductId && !givenProductName.trim()) {
-      toast.error('Item Given (جو مال دیا) ka naam select ya type karein');
+    const validGiven = givenItems.filter(
+      (item) => (item.productId || item.productName.trim()) && Number(item.quantity) > 0
+    );
+    if (validGiven.length === 0) {
+      toast.error('Kum se kum ek Item Given (جو مال دیا) aur uski quantity enter karein');
       return false;
     }
-    if (!receivedProductId && !receivedProductName.trim()) {
-      toast.error('Item Received (جو مال ملا) ka naam select ya type karein');
+
+    const validReceived = receivedItems.filter(
+      (item) => (item.productId || item.productName.trim()) && (Number(item.quantity) > 0 || Number(item.actualReceivedQuantity) > 0)
+    );
+    if (validReceived.length === 0) {
+      toast.error('Kum se kum ek Item Received (جو مال ملا) aur uski quantity enter karein');
       return false;
     }
-    if (!(Number(givenQty) > 0)) {
-      toast.error('Item Given ki quantity enter karein');
-      return false;
-    }
-    if (!(Number(receivedQty) > 0) && !(Number(actualReceivedQuantity) > 0)) {
-      toast.error('Item Received ki quantity enter karein');
-      return false;
-    }
-    if (!(Number(givenRate) >= 0) || !(Number(receivedRate) >= 0)) {
-      toast.error('Dono items ke rates enter karein');
-      return false;
-    }
-    if (partyType === 'customer' && netBalance !== 0 && !customerId && !walkInName.trim()) {
-      toast.error('Party / Customer ka naam select ya enter karein');
-      return false;
+
+    if (partyType === 'customer' && !customerId) {
+      if (!walkInName.trim()) {
+        toast.error('Party / Person Name (نام) enter karna zaroori hai');
+        return false;
+      }
+      if (!walkInPhone.trim()) {
+        toast.error('Phone Number (فون نمبر) enter karna zaroori hai');
+        return false;
+      }
     }
     if (partyType === 'company' && !companyName.trim() && !customerId && !walkInName.trim()) {
       toast.error('Company ya Party ka naam enter karein');
@@ -427,19 +450,75 @@ export default function Exchange() {
   const handleConfirm = async () => {
     if (!validate()) return;
 
-    const finalGivenName = selectedGivenProduct?.name || givenProductName.trim();
-    const finalReceivedName = selectedReceivedProduct?.name || receivedProductName.trim();
-    const finalPartyName =
-      companyName.trim() || selectedCustomer?.name || walkInName.trim() || 'Direct Exchange Party';
+    const validGivenList = givenItems
+      .filter((i) => (i.productId || i.productName.trim()) && Number(i.quantity) > 0)
+      .map((i) => {
+        const prod = products.find((p) => p._id === i.productId);
+        const name = prod?.name || i.productName.trim();
+        const qty = Number(i.quantity);
+        const rate = Number(i.rate) || 0;
+        const labour = Number(i.labour) || 0;
+        const extraCharge = Number(i.extraCharge) || 0;
+        const katoti = Number(i.katoti) || 0;
+        const baseValue = qty * rate;
+        const value = baseValue + labour + extraCharge - katoti;
+        return {
+          productId: i.productId || undefined,
+          productName: name,
+          quantity: qty,
+          rate,
+          labour,
+          extraCharge,
+          katoti,
+          baseValue,
+          value,
+        };
+      });
 
-    // Filter valid non-empty extra charges
-    const validExtraCharges = extraCharges
-      .filter((e) => Number(e.amount) > 0 && e.label.trim())
-      .map((e) => ({
-        label: e.label.trim(),
-        amount: Number(e.amount),
-        type: e.type,
-      }));
+    const validReceivedList = receivedItems
+      .filter((i) => (i.productId || i.productName.trim()) && (Number(i.quantity) > 0 || Number(i.actualReceivedQuantity) > 0))
+      .map((i) => {
+        const prod = products.find((p) => p._id === i.productId);
+        const name = prod?.name || i.productName.trim();
+        const qty = Number(i.actualReceivedQuantity !== '' ? i.actualReceivedQuantity : i.quantity);
+        const rate = Number(i.rate) || 0;
+        const labour = Number(i.labour) || 0;
+        const extraCharge = Number(i.extraCharge) || 0;
+        const katoti = Number(i.katoti) || 0;
+        const baseValue = qty * rate;
+        const value = baseValue + labour + extraCharge - katoti;
+        return {
+          productId: i.productId || undefined,
+          productName: name,
+          quantity: qty,
+          rate,
+          labour,
+          extraCharge,
+          katoti,
+          baseValue,
+          value,
+        };
+      });
+
+    const primaryGiven = validGivenList[0] || { productName: 'Item Given', quantity: 0, rate: 0, value: 0 };
+    const primaryReceived = validReceivedList[0] || { productName: 'Item Received', quantity: 0, rate: 0, value: 0 };
+
+    const selectedCust = customers.find((c) => c._id === customerId);
+    const finalPartyName =
+      companyName.trim() || selectedCust?.name || walkInName.trim() || 'Direct Exchange Party';
+
+    // Construct itemized extra charges list from given and received items
+    const validExtraCharges = [];
+    validGivenList.forEach((item) => {
+      if (item.labour) validExtraCharges.push({ label: `Given (${item.productName}): Labour / Mazdoori`, amount: item.labour, type: 'add' });
+      if (item.extraCharge) validExtraCharges.push({ label: `Given (${item.productName}): Kiraya / Freight`, amount: item.extraCharge, type: 'add' });
+      if (item.katoti) validExtraCharges.push({ label: `Given (${item.productName}): Katoti / Cut`, amount: item.katoti, type: 'deduct' });
+    });
+    validReceivedList.forEach((item) => {
+      if (item.labour) validExtraCharges.push({ label: `Received (${item.productName}): Labour / Mazdoori`, amount: item.labour, type: 'add' });
+      if (item.extraCharge) validExtraCharges.push({ label: `Received (${item.productName}): Kiraya / Freight`, amount: item.extraCharge, type: 'add' });
+      if (item.katoti) validExtraCharges.push({ label: `Received (${item.productName}): Katoti / Cut`, amount: item.katoti, type: 'deduct' });
+    });
 
     setSubmitting(true);
     try {
@@ -450,52 +529,17 @@ export default function Exchange() {
         customerId: customerId || null,
         customerName: !customerId ? finalPartyName : undefined,
         customerPhone: !customerId ? walkInPhone.trim() : undefined,
-        itemGiven: {
-          productId: givenProductId || undefined,
-          productName: finalGivenName,
-          quantity: Number(givenQty),
-          rate: Number(givenRate),
-          value: givenValue,
-        },
-        itemReceived: {
-          productId: receivedProductId || undefined,
-          productName: finalReceivedName,
-          quantity: Number(actualReceivedQuantity !== '' ? actualReceivedQuantity : receivedQty),
-          rate: Number(receivedRate),
-          value: receivedValue,
-        },
-        // Backward compatibility keys
-        scrapGiven: {
-          productId: givenProductId || undefined,
-          productName: finalGivenName,
-          quantity: Number(givenQty),
-          rate: Number(givenRate),
-          value: givenValue,
-        },
-        copperReceived: {
-          productId: receivedProductId || undefined,
-          productName: finalReceivedName,
-          quantity: Number(actualReceivedQuantity !== '' ? actualReceivedQuantity : receivedQty),
-          rate: Number(receivedRate),
-          value: receivedValue,
-        },
-        scrapProductId: givenProductId || undefined,
-        copperProductId: receivedProductId || undefined,
-        scrapProductName: finalGivenName,
-        copperProductName: finalReceivedName,
-        scrapQuantity: Number(givenQty),
-        scrapRate: Number(givenRate),
-        copperQuantity: Number(actualReceivedQuantity !== '' ? actualReceivedQuantity : receivedQty),
-        copperRate: Number(receivedRate),
-        scrapValue: givenValue,
-        copperValue: receivedValue,
+        itemGiven: primaryGiven,
+        itemReceived: primaryReceived,
+        itemsGiven: validGivenList,
+        itemsReceived: validReceivedList,
         netBalance,
         dispatchDetails: {
           vehicleNumber: vehicleNumber.trim(),
           driverName: driverName.trim(),
           driverPhone: driverPhone.trim(),
-          sentQuantity: Number(sentQuantity || receivedQty || 0),
-          receivedQuantity: Number(actualReceivedQuantity || sentQuantity || receivedQty || 0),
+          sentQuantity: Number(sentQuantity || primaryReceived.quantity || 0),
+          receivedQuantity: Number(actualReceivedQuantity || primaryReceived.quantity || 0),
           notes: notes.trim(),
           customFields: validExtraCharges.map((c) => ({
             label: `${c.type === 'deduct' ? '(-)' : '(+)'} ${c.label}`,
@@ -511,17 +555,19 @@ export default function Exchange() {
         receiptNumber: exchange.receiptNumber || `EX-${Date.now().toString().slice(-6)}`,
         customerName:
           exchange.customerName ||
-          selectedCustomer?.name ||
+          selectedCust?.name ||
           finalPartyName,
         customerPhone:
-          exchange.customerPhone || selectedCustomer?.phone || walkInPhone.trim() || '',
-        itemGivenName: finalGivenName,
-        itemReceivedName: finalReceivedName,
-        givenQuantity: Number(givenQty),
-        givenRate: Number(givenRate),
+          exchange.customerPhone || selectedCust?.phone || walkInPhone.trim() || '',
+        itemsGiven: validGivenList,
+        itemsReceived: validReceivedList,
+        itemGivenName: primaryGiven.productName,
+        itemReceivedName: primaryReceived.productName,
+        givenQuantity: primaryGiven.quantity,
+        givenRate: primaryGiven.rate,
         givenValue,
-        receivedQuantity: Number(actualReceivedQuantity !== '' ? actualReceivedQuantity : receivedQty),
-        receivedRate: Number(receivedRate),
+        receivedQuantity: primaryReceived.quantity,
+        receivedRate: primaryReceived.rate,
         receivedValue,
         baseBalance,
         totalExtraCharges,
@@ -530,8 +576,8 @@ export default function Exchange() {
         createdAt: new Date(),
       });
       setSuccessOpen(true);
-      toast.success('Exchange & extra charges bill recorded successfully');
-      if (!customerId && walkInName.trim()) fetchData();
+      toast.success('Multi-item Exchange bill recorded successfully');
+      if (!customerId && walkInName.trim()) fetchData(false);
     } catch (err) {
       toast.error(getErrorMessage(err, 'Failed to record exchange'));
     } finally {
@@ -540,7 +586,8 @@ export default function Exchange() {
   };
 
   const handleWhatsApp = () => {
-    const phone = selectedCustomer?.phone || completedExchange?.customerPhone;
+    const selectedCust = customers.find((c) => c._id === customerId);
+    const phone = selectedCust?.phone || completedExchange?.customerPhone;
     const balanceText =
       netBalance > 0
         ? `Payable: ${formatCurrency(netBalance)} (Aapne dene hain)`
@@ -548,31 +595,111 @@ export default function Exchange() {
           ? `Receivable: ${formatCurrency(Math.abs(netBalance))} (Aapne lene hain)`
           : 'Settled (Hisab Barabar)';
 
-    let extraText = '';
-    const validExtras = extraCharges.filter((e) => Number(e.amount) > 0 && e.label.trim());
-    if (validExtras.length > 0) {
-      extraText = '\n*Extra Charges / Adjustments:*\n' +
-        validExtras.map((e) => `• ${e.label}: ${e.type === 'deduct' ? '-' : '+'}${formatCurrency(Number(e.amount))}`).join('\n') +
-        `\n*Total Extras:* ${totalExtraCharges >= 0 ? '+' : '-'}${formatCurrency(Math.abs(totalExtraCharges))}\n`;
-    }
+    const givenListStr = (completedExchange?.itemsGiven || givenItems)
+      .filter((i) => i.productName)
+      .map((i) => {
+        const q = Number(i.quantity) || 0;
+        const r = Number(i.rate) || 0;
+        const l = Number(i.labour) || 0;
+        const e = Number(i.extraCharge) || 0;
+        const k = Number(i.katoti) || 0;
+        const tot = (q * r) + l + e - k;
+        let line = `• ${i.productName}: ${q} @ Rs.${r} = ${formatCurrency(q * r)}`;
+        if (l || e || k) line += ` (Labour:+${l}, Freight:+${e}, Katoti:-${k} => Net: ${formatCurrency(tot)})`;
+        return line;
+      })
+      .join('\n');
+
+    const receivedListStr = (completedExchange?.itemsReceived || receivedItems)
+      .filter((i) => i.productName)
+      .map((i) => {
+        const q = Number(i.quantity) || 0;
+        const r = Number(i.rate) || 0;
+        const l = Number(i.labour) || 0;
+        const e = Number(i.extraCharge) || 0;
+        const k = Number(i.katoti) || 0;
+        const tot = (q * r) + l + e - k;
+        let line = `• ${i.productName}: ${q} @ Rs.${r} = ${formatCurrency(q * r)}`;
+        if (l || e || k) line += ` (Labour:+${l}, Freight:+${e}, Katoti:-${k} => Net: ${formatCurrency(tot)})`;
+        return line;
+      })
+      .join('\n');
 
     const text = `*Item Exchange & Bill Slip*\n` +
       `--------------------------\n` +
-      `*Item Given:* ${givenProductName || 'Item'} (${givenQty} @ Rs.${givenRate}) = ${formatCurrency(givenValue)}\n` +
-      `*Item Received:* ${receivedProductName || 'Item'} (${receivedQty} @ Rs.${receivedRate}) = ${formatCurrency(receivedValue)}\n` +
-      `*Exchange Diff:* ${formatCurrency(Math.abs(baseBalance))}\n` +
-      extraText +
+      `*Items Given (جو مال دیا):*\n${givenListStr}\n` +
+      `*Total Given:* ${formatCurrency(givenValue)}\n\n` +
+      `*Items Received (جو مال ملا):*\n${receivedListStr}\n` +
+      `*Total Received:* ${formatCurrency(receivedValue)}\n` +
+      `--------------------------\n` +
+      `*Base Exchange Diff:* ${formatCurrency(Math.abs(baseBalance))}\n` +
+      (totalExtraCharges !== 0 ? `*Net Extra Adjustments:* ${totalExtraCharges >= 0 ? '+' : '-'}${formatCurrency(Math.abs(totalExtraCharges))}\n` : '') +
       `--------------------------\n` +
       `*Final Net Amount:* ${balanceText}\n` +
       `— Electric Shop`;
     openWhatsAppShare(phone, text);
   };
 
-  const handleSuccessClose = () => {
+  const handleSaveKeep = useCallback(() => {
+    setSuccessOpen(false);
+    toast.info('Record saved! Form data retained.');
+  }, [toast]);
+
+  const handleSuccessClose = useCallback(() => {
     setSuccessOpen(false);
     setCompletedExchange(null);
     resetForm();
-  };
+  }, []);
+
+  // Keyboard Mouseless Shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // F4 or Ctrl+S: Confirm / Save
+      if ((e.ctrlKey && (e.key === 's' || e.key === 'S')) || e.key === 'F4') {
+        e.preventDefault();
+        if (successOpen) {
+          handleSaveKeep();
+        } else if (!submitting) {
+          handleConfirm();
+        }
+        return;
+      }
+      // Ctrl+P or 'P' key when receipt is open: Print
+      if (successOpen && ((e.ctrlKey && (e.key === 'p' || e.key === 'P')) || e.key === 'p' || e.key === 'P')) {
+        const activeTag = document.activeElement?.tagName;
+        if (activeTag !== 'INPUT' && activeTag !== 'TEXTAREA') {
+          e.preventDefault();
+          window.print();
+          return;
+        }
+      }
+      // Esc: Close modal & keep form data intact
+      if (e.key === 'Escape') {
+        if (successOpen) {
+          e.preventDefault();
+          handleSaveKeep();
+        }
+        return;
+      }
+      // F1 or Ctrl+Enter: Close modal & Clear form for new item
+      if (e.key === 'F1' || (e.ctrlKey && e.key === 'Enter')) {
+        e.preventDefault();
+        if (successOpen) {
+          handleSuccessClose();
+        }
+        return;
+      }
+      // F8: Reset Form
+      if (e.key === 'F8') {
+        e.preventDefault();
+        resetForm();
+        return;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [successOpen, submitting, handleConfirm, handleSaveKeep, handleSuccessClose, resetForm]);
 
   if (loading) {
     return (
@@ -589,53 +716,195 @@ export default function Exchange() {
         subtitle="Kisi bhi item ko doosri item ke sath exchange karein, extra kharchay/katoti add karein aur print slip banayein"
       />
 
+      {/* Keyboard Shortcuts Toolbar (Mouseless Bar) */}
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-ink-200 bg-ink-900 px-3 py-2 text-xs text-white shadow-sm">
+        <div className="flex items-center gap-2 font-medium">
+          <Keyboard className="h-4 w-4 text-amber-400" />
+          <span className="text-amber-400 font-bold">Mouseless Exchange Shortcuts:</span>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 text-[11px]">
+          <span className="rounded bg-brand-700 px-2 py-0.5 font-bold text-white shadow-sm">
+            <kbd className="text-white">F4 / Ctrl+S</kbd> Save &amp; Record Bill
+          </span>
+          <span className="rounded bg-ink-800 px-2 py-0.5 border border-ink-700">
+            <kbd className="font-bold text-emerald-400">Ctrl+P / P</kbd> Print Receipt
+          </span>
+          <span className="rounded bg-ink-800 px-2 py-0.5 border border-ink-700">
+            <kbd className="font-bold text-amber-300">Esc / S</kbd> Save (Keep Data)
+          </span>
+          <span className="rounded bg-ink-800 px-2 py-0.5 border border-ink-700">
+            <kbd className="font-bold text-sky-300">F1 / Ctrl+Enter</kbd> Clear &amp; New Item
+          </span>
+          <span className="rounded bg-ink-800 px-2 py-0.5 border border-ink-700">
+            <kbd className="font-bold text-danger-300">F8</kbd> Reset Form
+          </span>
+        </div>
+      </div>
+
       <div className="grid gap-6 lg:grid-cols-2">
-        {/* Card 1: Item Given (جو دیا / بھیجا) */}
+        {/* Card 1: Items Given (جو مال دیا / بھیجا) */}
         <Card className="space-y-4 border-amber-200 bg-white shadow-sm">
-          <div className="flex items-center gap-3 border-b border-ink-100 pb-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50 text-amber-600 shadow-sm">
-              <Package className="h-5 w-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="font-display text-lg font-semibold text-ink-900">Item Given (جو دیا / بھیجا)</h2>
-                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">
-                  Outgoing
-                </span>
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-ink-100 pb-3">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50 text-amber-600 shadow-sm">
+                <Package className="h-5 w-5" />
               </div>
-              <p className="text-xs text-ink-500">Aapne ya party ne jo cheez/maal diya hai</p>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="font-display text-lg font-semibold text-ink-900">Items Given (جو دیا / بھیجا)</h2>
+                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">
+                    {givenItems.length} Item(s)
+                  </span>
+                </div>
+                <p className="text-xs text-ink-500">Aapne ya party ne jo cheez/maal diya hai</p>
+              </div>
             </div>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              leftIcon={Plus}
+              onClick={addGivenItem}
+              className="border-amber-300 text-amber-800 hover:bg-amber-50"
+            >
+              + Add More Item Given (+ مزید مال دیں)
+            </Button>
           </div>
 
-          <ComboboxInput
-            label="Product / Item Name (Select karein ya naya naam likhein)"
-            options={productOptions}
-            value={givenProductId}
-            inputValue={givenProductName}
-            onSelect={handleGivenProductChange}
-            onInputChange={setGivenProductName}
-            placeholder="Search product or type custom item name..."
-          />
+          <div className="space-y-3 pr-1">
+            {givenItems.map((item, index) => {
+              const selectedProd = products.find((p) => p._id === item.productId);
+              const qty = Number(item.quantity) || 0;
+              const rate = Number(item.rate) || 0;
+              const labour = Number(item.labour) || 0;
+              const extra = Number(item.extraCharge) || 0;
+              const katoti = Number(item.katoti) || 0;
+              const baseValue = qty * rate;
+              const lineTotal = baseValue + labour + extra - katoti;
 
-          <div className="grid grid-cols-2 gap-3">
-            <Input
-              label={`Quantity / Weight${selectedGivenProduct ? ` (${selectedGivenProduct.primaryUnit})` : ''}`}
-              type="number"
-              min="0"
-              step="any"
-              placeholder="e.g. 50"
-              value={givenQty}
-              onChange={(e) => setGivenQty(e.target.value)}
-            />
-            <Input
-              label="Rate per unit (Rs)"
-              type="number"
-              min="0"
-              step="0.01"
-              placeholder="e.g. 2400"
-              value={givenRate}
-              onChange={(e) => setGivenRate(e.target.value)}
-            />
+              return (
+                <div
+                  key={item.id}
+                  className="relative space-y-3 rounded-xl border border-amber-200/80 bg-amber-50/30 p-3"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-amber-900 bg-amber-100 px-2 py-0.5 rounded-md">
+                      Item #{index + 1}
+                    </span>
+                    {givenItems.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => removeGivenItem(item.id)}
+                        className="text-ink-400 hover:text-danger-600 transition"
+                        title="Remove item"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+
+                  <ComboboxInput
+                    label="Product / Item Name"
+                    options={productOptions}
+                    value={item.productId}
+                    inputValue={item.productName}
+                    onSelect={(id, name) => {
+                      updateGivenItem(item.id, 'productId', id);
+                      updateGivenItem(item.id, 'productName', name);
+                    }}
+                    onInputChange={(val) => updateGivenItem(item.id, 'productName', val)}
+                    placeholder="Search product or type custom item name..."
+                  />
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <Input
+                      label={`Quantity / Weight${selectedProd ? ` (${selectedProd.primaryUnit})` : ''}`}
+                      type="number"
+                      min="0"
+                      step="any"
+                      placeholder="e.g. 50"
+                      value={item.quantity}
+                      onChange={(e) => updateGivenItem(item.id, 'quantity', e.target.value)}
+                    />
+                    <Input
+                      label="Rate per unit (Rs)"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      placeholder="e.g. 2400"
+                      value={item.rate}
+                      onChange={(e) => updateGivenItem(item.id, 'rate', e.target.value)}
+                    />
+                  </div>
+
+                  {/* Optional per-item extra charges / adjustments */}
+                  <div className="rounded-xl border border-amber-200/70 bg-amber-100/40 p-2.5 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-bold text-amber-900">
+                        Extra Charges / Adjustments (اضافی اخراجات)
+                      </span>
+                      <span className="text-[10px] text-amber-700 italic">Optional (اختیاری)</span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <label className="block text-[10px] font-semibold text-amber-900 mb-0.5">
+                          Mazdoori (+Rs)
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          placeholder="0"
+                          value={item.labour || ''}
+                          onChange={(e) => updateGivenItem(item.id, 'labour', e.target.value)}
+                          className="h-8 w-full rounded-lg border border-amber-300 bg-white px-2 text-xs text-ink-900 outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-semibold text-amber-900 mb-0.5">
+                          Kiraya (+Rs)
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          placeholder="0"
+                          value={item.extraCharge || ''}
+                          onChange={(e) => updateGivenItem(item.id, 'extraCharge', e.target.value)}
+                          className="h-8 w-full rounded-lg border border-amber-300 bg-white px-2 text-xs text-ink-900 outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-semibold text-amber-900 mb-0.5">
+                          Katoti (-Rs)
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          placeholder="0"
+                          value={item.katoti || ''}
+                          onChange={(e) => updateGivenItem(item.id, 'katoti', e.target.value)}
+                          className="h-8 w-full rounded-lg border border-amber-300 bg-white px-2 text-xs text-ink-900 outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {lineTotal > 0 && (
+                    <div className="flex items-center justify-between text-xs font-bold text-amber-900 pt-1 border-t border-amber-200/50">
+                      <span className="text-[11px] font-normal text-amber-700">
+                        Base: {formatCurrency(baseValue)}
+                        {(labour > 0 || extra > 0 || katoti > 0) && (
+                          <span> | Extras: +{labour} +{extra} -{katoti}</span>
+                        )}
+                      </span>
+                      <span>Item Total: {formatCurrency(lineTotal)}</span>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
 
           <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-4">
@@ -645,7 +914,7 @@ export default function Exchange() {
                   Total Given Value (دیے گئے مال کی کل رقم)
                 </p>
                 <p className="text-xs text-amber-600/80">
-                  {givenQty ? `${givenQty} × Rs. ${givenRate || 0}` : '0 Qty'}
+                  {givenItems.length} item(s) total
                 </p>
               </div>
               <p className="font-display text-2xl font-bold text-amber-800">
@@ -655,116 +924,208 @@ export default function Exchange() {
           </div>
         </Card>
 
-        {/* Card 2: Item Received (جو ملا / وصول کیا) */}
+        {/* Card 2: Items Received (جو ملا / وصول کیا) */}
         <Card className="space-y-4 border-brand-200 bg-white shadow-sm">
-          <div className="flex items-center gap-3 border-b border-ink-100 pb-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-50 text-brand-700 shadow-sm">
-              <PackageCheck className="h-5 w-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="font-display text-lg font-semibold text-ink-900">Item Received (جو ملا / وصول کیا)</h2>
-                <span className="rounded-full bg-brand-100 px-2 py-0.5 text-xs font-semibold text-brand-800">
-                  Incoming
-                </span>
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-ink-100 pb-3">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-50 text-brand-700 shadow-sm">
+                <PackageCheck className="h-5 w-5" />
               </div>
-              <p className="text-xs text-ink-500">Badlay me jo cheez/maal wapas mila hai</p>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="font-display text-lg font-semibold text-ink-900">Items Received (جو ملا / وصول کیا)</h2>
+                  <span className="rounded-full bg-brand-100 px-2 py-0.5 text-xs font-semibold text-brand-800">
+                    {receivedItems.length} Item(s)
+                  </span>
+                </div>
+                <p className="text-xs text-ink-500">Badlay me jo cheez/maal wapas mila hai</p>
+              </div>
             </div>
-          </div>
-
-          <ComboboxInput
-            label="Product / Item Name (Select karein ya naya naam likhein)"
-            options={productOptions}
-            value={receivedProductId}
-            inputValue={receivedProductName}
-            onSelect={handleReceivedProductChange}
-            onInputChange={setReceivedProductName}
-            placeholder="Search product or type custom item name..."
-          />
-
-          {!trackWeightShortage ? (
-            <div className="grid grid-cols-2 gap-3">
-              <Input
-                label={`Quantity / Weight${selectedReceivedProduct ? ` (${selectedReceivedProduct.primaryUnit})` : ''}`}
-                type="number"
-                min="0"
-                step="any"
-                placeholder="e.g. 40"
-                value={receivedQty}
-                onChange={(e) => {
-                  setReceivedQty(e.target.value);
-                  setSentQuantity(e.target.value);
-                }}
-              />
-              <Input
-                label="Rate per unit (Rs)"
-                type="number"
-                min="0"
-                step="0.01"
-                placeholder="e.g. 3000"
-                value={receivedRate}
-                onChange={(e) => setReceivedRate(e.target.value)}
-              />
-            </div>
-          ) : (
-            <div className="grid grid-cols-3 gap-3">
-              <Input
-                label="Sent Qty (Bheja)"
-                type="number"
-                min="0"
-                step="any"
-                placeholder="0"
-                value={sentQuantity}
-                onChange={(e) => setSentQuantity(e.target.value)}
-                hint="Loaded weight"
-              />
-              <Input
-                label="Received Qty (Mila)"
-                type="number"
-                min="0"
-                step="any"
-                placeholder={sentQuantity || '0'}
-                value={actualReceivedQuantity}
-                onChange={(e) => setActualReceivedQuantity(e.target.value)}
-                hint="Weighed weight"
-              />
-              <Input
-                label="Rate (Rs)"
-                type="number"
-                min="0"
-                step="0.01"
-                placeholder="0"
-                value={receivedRate}
-                onChange={(e) => setReceivedRate(e.target.value)}
-              />
-            </div>
-          )}
-
-          {/* Shortage tracking toggle */}
-          <div className="flex items-center justify-between pt-1">
-            <button
+            <Button
               type="button"
-              onClick={() => setTrackWeightShortage(!trackWeightShortage)}
-              className="text-xs font-medium text-brand-600 hover:text-brand-800 hover:underline"
+              size="sm"
+              variant="outline"
+              leftIcon={Plus}
+              onClick={addReceivedItem}
+              className="border-brand-300 text-brand-800 hover:bg-brand-50"
             >
-              {trackWeightShortage ? '← Single Quantity Mode' : '+ Add Sent vs Received Weight Tracking (Shortage)'}
-            </button>
+              + Add More Item Received (+ مزید مال وصول کریں)
+            </Button>
           </div>
 
-          {/* Shortage alert if applicable */}
-          {trackWeightShortage && (() => {
-            const s = Number(sentQuantity || receivedQty) || 0;
-            const r = Number(actualReceivedQuantity !== '' ? actualReceivedQuantity : s) || 0;
-            const shortage = Math.max(0, s - r);
-            const loss = shortage * (Number(receivedRate) || 0);
-            if (shortage <= 0) return null;
-            return (
-              <div className="flex items-center justify-between rounded-xl border border-danger-200 bg-danger-50 px-3 py-2 text-xs text-danger-800">
-                <span className="font-semibold">⚠️ Weight Loss / Shortage: -{formatNumber(shortage, 2)} {selectedReceivedProduct?.primaryUnit || 'units'}</span>
-                <span className="font-bold text-danger-900">-{formatCurrency(loss)}</span>
-              </div>
-            );
-          })()}
+          <div className="space-y-3 pr-1">
+            {receivedItems.map((item, index) => {
+              const selectedProd = products.find((p) => p._id === item.productId);
+              const effectiveQty =
+                trackWeightShortage && item.actualReceivedQuantity !== ''
+                  ? Number(item.actualReceivedQuantity) || 0
+                  : Number(item.quantity) || 0;
+              const rate = Number(item.rate) || 0;
+              const labour = Number(item.labour) || 0;
+              const extra = Number(item.extraCharge) || 0;
+              const katoti = Number(item.katoti) || 0;
+              const baseValue = effectiveQty * rate;
+              const lineTotal = baseValue + labour + extra - katoti;
+
+              return (
+                <div
+                  key={item.id}
+                  className="relative space-y-3 rounded-xl border border-brand-200/80 bg-brand-50/30 p-3"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-brand-900 bg-brand-100 px-2 py-0.5 rounded-md">
+                      Item #{index + 1}
+                    </span>
+                    {receivedItems.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => removeReceivedItem(item.id)}
+                        className="text-ink-400 hover:text-danger-600 transition"
+                        title="Remove item"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+
+                  <ComboboxInput
+                    label="Product / Item Name"
+                    options={productOptions}
+                    value={item.productId}
+                    inputValue={item.productName}
+                    onSelect={(id, name) => {
+                      updateReceivedItem(item.id, 'productId', id);
+                      updateReceivedItem(item.id, 'productName', name);
+                    }}
+                    onInputChange={(val) => updateReceivedItem(item.id, 'productName', val)}
+                    placeholder="Search product or type custom item name..."
+                  />
+
+                  {!trackWeightShortage ? (
+                    <div className="grid grid-cols-2 gap-3">
+                      <Input
+                        label={`Quantity / Weight${selectedProd ? ` (${selectedProd.primaryUnit})` : ''}`}
+                        type="number"
+                        min="0"
+                        step="any"
+                        placeholder="e.g. 40"
+                        value={item.quantity}
+                        onChange={(e) => updateReceivedItem(item.id, 'quantity', e.target.value)}
+                      />
+                      <Input
+                        label="Rate per unit (Rs)"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        placeholder="e.g. 3000"
+                        value={item.rate}
+                        onChange={(e) => updateReceivedItem(item.id, 'rate', e.target.value)}
+                      />
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-3 gap-3">
+                      <Input
+                        label="Sent Qty"
+                        type="number"
+                        min="0"
+                        step="any"
+                        placeholder="0"
+                        value={item.sentQuantity || item.quantity}
+                        onChange={(e) => {
+                          updateReceivedItem(item.id, 'sentQuantity', e.target.value);
+                          updateReceivedItem(item.id, 'quantity', e.target.value);
+                        }}
+                      />
+                      <Input
+                        label="Received Qty"
+                        type="number"
+                        min="0"
+                        step="any"
+                        placeholder="0"
+                        value={item.actualReceivedQuantity}
+                        onChange={(e) => updateReceivedItem(item.id, 'actualReceivedQuantity', e.target.value)}
+                      />
+                      <Input
+                        label="Rate (Rs)"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        placeholder="0"
+                        value={item.rate}
+                        onChange={(e) => updateReceivedItem(item.id, 'rate', e.target.value)}
+                      />
+                    </div>
+                  )}
+
+                  {/* Optional per-item extra charges / adjustments */}
+                  <div className="rounded-xl border border-brand-200/70 bg-brand-100/40 p-2.5 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-bold text-brand-900">
+                        Extra Charges / Adjustments (اضافی اخراجات)
+                      </span>
+                      <span className="text-[10px] text-brand-700 italic">Optional (اختیاری)</span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <label className="block text-[10px] font-semibold text-brand-900 mb-0.5">
+                          Mazdoori (+Rs)
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          placeholder="0"
+                          value={item.labour || ''}
+                          onChange={(e) => updateReceivedItem(item.id, 'labour', e.target.value)}
+                          className="h-8 w-full rounded-lg border border-brand-300 bg-white px-2 text-xs text-ink-900 outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-semibold text-brand-900 mb-0.5">
+                          Kiraya (+Rs)
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          placeholder="0"
+                          value={item.extraCharge || ''}
+                          onChange={(e) => updateReceivedItem(item.id, 'extraCharge', e.target.value)}
+                          className="h-8 w-full rounded-lg border border-brand-300 bg-white px-2 text-xs text-ink-900 outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-semibold text-brand-900 mb-0.5">
+                          Katoti (-Rs)
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          placeholder="0"
+                          value={item.katoti || ''}
+                          onChange={(e) => updateReceivedItem(item.id, 'katoti', e.target.value)}
+                          className="h-8 w-full rounded-lg border border-brand-300 bg-white px-2 text-xs text-ink-900 outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {lineTotal > 0 && (
+                    <div className="flex items-center justify-between text-xs font-bold text-brand-900 pt-1 border-t border-brand-200/50">
+                      <span className="text-[11px] font-normal text-brand-700">
+                        Base: {formatCurrency(baseValue)}
+                        {(labour > 0 || extra > 0 || katoti > 0) && (
+                          <span> | Extras: +{labour} +{extra} -{katoti}</span>
+                        )}
+                      </span>
+                      <span>Item Total: {formatCurrency(lineTotal)}</span>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
 
           <div className="rounded-xl border border-brand-200 bg-brand-50/70 p-4">
             <div className="flex items-center justify-between">
@@ -773,9 +1134,7 @@ export default function Exchange() {
                   Total Received Value (وصول مال کی کل رقم)
                 </p>
                 <p className="text-xs text-brand-600/80">
-                  {(actualReceivedQuantity || receivedQty)
-                    ? `${actualReceivedQuantity || receivedQty} × Rs. ${receivedRate || 0}`
-                    : '0 Qty'}
+                  {receivedItems.length} item(s) total
                 </p>
               </div>
               <p className="font-display text-2xl font-bold text-brand-800">
@@ -785,113 +1144,6 @@ export default function Exchange() {
           </div>
         </Card>
       </div>
-
-      {/* Extra Charges / Custom Prices Box (خالی باکسز - کسٹمر کے لیے ایکسٹرا پرائسز/کٹوتی) */}
-      <Card className="space-y-4 border-emerald-200 bg-white shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-ink-100 pb-3">
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700 shadow-sm">
-              <Calculator className="h-5 w-5" />
-            </div>
-            <div>
-              <h2 className="font-display text-base font-semibold text-ink-900">
-                Extra Charges, Labour & Custom Prices (اضافی اخراجات / کٹوتی)
-              </h2>
-              <p className="text-xs text-ink-500">
-                Aap apni marzi se Mazdoori, Kiraya, Katoti ya koi bhi extra price add kar sakte hain
-              </p>
-            </div>
-          </div>
-
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            leftIcon={Plus}
-            onClick={addExtraCharge}
-            className="border-emerald-300 text-emerald-700 hover:bg-emerald-50"
-          >
-            Add More Extra Price Box (+ باکس شامل کریں)
-          </Button>
-        </div>
-
-        {/* Dynamic List of Extra Boxes */}
-        <div className="space-y-3">
-          {extraCharges.map((item, index) => (
-            <div
-              key={item.id}
-              className="flex flex-wrap items-center gap-3 rounded-xl border border-ink-100 bg-ink-50/50 p-3"
-            >
-              <div className="w-8 shrink-0 text-center font-bold text-xs text-ink-400">
-                #{index + 1}
-              </div>
-
-              {/* Charge Description / Label */}
-              <div className="flex-1 min-w-[200px]">
-                <Input
-                  placeholder="e.g. Mazdoori, Gari Kiraya, Katoti, Dabba charge..."
-                  value={item.label}
-                  onChange={(e) => updateExtraCharge(item.id, 'label', e.target.value)}
-                />
-              </div>
-
-              {/* Type: Add (+) or Deduct (-) */}
-              <div className="w-[140px] shrink-0">
-                <select
-                  value={item.type}
-                  onChange={(e) => updateExtraCharge(item.id, 'type', e.target.value)}
-                  className="h-10 w-full rounded-xl border border-ink-200 bg-white px-3 text-xs font-semibold text-ink-800 outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-500/20"
-                >
-                  <option value="add">+ Add to Bill (جمع کریں)</option>
-                  <option value="deduct">- Deduct / Katoti (منفی کریں)</option>
-                </select>
-              </div>
-
-              {/* Amount (Rs) */}
-              <div className="w-[150px] shrink-0">
-                <Input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  placeholder="Amount (Rs)"
-                  value={item.amount}
-                  onChange={(e) => updateExtraCharge(item.id, 'amount', e.target.value)}
-                />
-              </div>
-
-              {/* Delete Box */}
-              <button
-                type="button"
-                onClick={() => removeExtraCharge(item.id)}
-                className="rounded-lg p-2 text-ink-400 hover:bg-danger-50 hover:text-danger-600 transition"
-                title="Remove box"
-              >
-                <Trash2 className="h-4 w-4" />
-              </button>
-            </div>
-          ))}
-
-          {/* Extra summary banner */}
-          <div className="flex items-center justify-between rounded-xl border border-emerald-200 bg-emerald-50/60 px-4 py-2.5">
-            <span className="text-xs font-semibold text-emerald-800">
-              Total Extra Adjustments / Net Charges:
-            </span>
-            <span
-              className={cn(
-                'font-display text-base font-bold',
-                totalExtraCharges > 0
-                  ? 'text-emerald-800'
-                  : totalExtraCharges < 0
-                    ? 'text-danger-700'
-                    : 'text-ink-700'
-              )}
-            >
-              {totalExtraCharges > 0 ? '+' : ''}
-              {formatCurrency(totalExtraCharges)}
-            </span>
-          </div>
-        </div>
-      </Card>
 
       {/* Transaction & Party Options */}
       <Card className="space-y-4">
@@ -1041,19 +1293,21 @@ export default function Exchange() {
           {!customerId && (
             <div className="space-y-3 rounded-xl border border-dashed border-ink-200 bg-ink-50/50 p-3">
               <p className="text-xs font-semibold text-ink-700">
-                Or Enter Custom Party / Walk-in Details:
+                Or Enter Custom Party / Walk-in Details: <span className="text-danger-600 font-bold">* Required</span>
               </p>
               <Input
-                label="Party / Person Name"
-                placeholder="e.g. Bilal Traders / Usman"
+                label="Party / Person Name *"
+                placeholder="e.g. Bilal Traders / Usman (Required)"
                 value={walkInName}
                 onChange={(e) => setWalkInName(e.target.value)}
+                required
               />
               <Input
-                label="Phone Number"
-                placeholder="03XX-XXXXXXX"
+                label="Phone Number *"
+                placeholder="03XX-XXXXXXX (Required)"
                 value={walkInPhone}
                 onChange={(e) => setWalkInPhone(e.target.value)}
+                required
               />
             </div>
           )}
@@ -1074,7 +1328,7 @@ export default function Exchange() {
                 {formatCurrency(givenValue)}
               </p>
               <p className="truncate text-[11px] text-amber-700/80">
-                {givenProductName || 'Item'} ({givenQty || 0})
+                {givenItems.map((i) => i.productName).filter(Boolean).join(', ') || 'Items'} ({givenItems.length} item(s))
               </p>
             </div>
 
@@ -1085,7 +1339,7 @@ export default function Exchange() {
                 {formatCurrency(receivedValue)}
               </p>
               <p className="truncate text-[11px] text-brand-700/80">
-                {receivedProductName || 'Item'} ({actualReceivedQuantity || receivedQty || 0})
+                {receivedItems.map((i) => i.productName).filter(Boolean).join(', ') || 'Items'} ({receivedItems.length} item(s))
               </p>
             </div>
 
@@ -1102,7 +1356,7 @@ export default function Exchange() {
                 {formatCurrency(totalExtraCharges)}
               </p>
               <p className="truncate text-[11px] text-emerald-700/80">
-                {extraCharges.filter((e) => Number(e.amount) > 0).length} Extra Items
+                Net Item Adjustments
               </p>
             </div>
 
@@ -1155,15 +1409,16 @@ export default function Exchange() {
               onClick={resetForm}
               disabled={submitting}
             >
-              Reset Form
+              Reset Form [F8]
             </Button>
             <Button
               size="lg"
               loading={submitting}
               onClick={handleConfirm}
-              className="px-8"
+              className="px-8 font-bold"
+              leftIcon={Save}
             >
-              Record & Generate Bill Slip
+              Save &amp; Record Bill [F4 / Ctrl+S]
             </Button>
           </div>
         </Card>
@@ -1172,18 +1427,23 @@ export default function Exchange() {
       {/* Completion Modal with Full Printable Receipt */}
       <Modal
         open={successOpen}
-        onClose={handleSuccessClose}
+        onClose={handleSaveKeep}
         title="Exchange Bill & Receipt Slip"
         footer={
-          <>
+          <div className="no-print flex flex-wrap justify-end gap-2">
+            <Button variant="soft" leftIcon={Save} onClick={handleSaveKeep}>
+              Save &amp; Keep Form [Esc / Ctrl+S]
+            </Button>
             <Button variant="outline" leftIcon={Printer} onClick={() => window.print()}>
-              Print Full Slip (پرنٹ رسید)
+              Print Slip [Ctrl+P]
             </Button>
             <Button variant="success" leftIcon={MessageCircle} onClick={handleWhatsApp}>
-              Share on WhatsApp
+              Share WhatsApp
             </Button>
-            <Button onClick={handleSuccessClose}>Create New Exchange</Button>
-          </>
+            <Button variant="danger" leftIcon={X} onClick={handleSuccessClose}>
+              Close &amp; New Entry [F1]
+            </Button>
+          </div>
         }
       >
         <div className="space-y-4 py-2">
@@ -1237,41 +1497,49 @@ export default function Exchange() {
 
             {/* Items Table */}
             <div className="mt-3 space-y-3">
-              {/* Item Given Row */}
+              {/* Items Given List */}
               <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-3">
                 <div className="flex items-center justify-between text-xs font-bold text-amber-800 border-b border-amber-200 pb-1 mb-1">
-                  <span>ITEM GIVEN (جو مال دیا)</span>
-                  <span>OUTGOING</span>
+                  <span>ITEMS GIVEN (جو مال دیا/بھیجا)</span>
+                  <span>OUTGOING ({completedExchange?.itemsGiven?.length || givenItems.length})</span>
                 </div>
-                <div className="flex justify-between text-sm">
-                  <span className="font-semibold text-ink-900">
-                    {completedExchange?.itemGivenName || givenProductName}
-                  </span>
-                  <span className="font-bold text-amber-900">
-                    {formatCurrency(completedExchange?.givenValue ?? givenValue)}
-                  </span>
-                </div>
-                <div className="text-xs text-ink-500">
-                  Quantity: {formatNumber(completedExchange?.givenQuantity ?? givenQty)} × Rate: Rs.{formatNumber(completedExchange?.givenRate ?? givenRate)}
+                <div className="space-y-1 pt-1 divide-y divide-amber-200/50">
+                  {(completedExchange?.itemsGiven || givenItems.filter((i) => i.productName.trim())).map((item, idx) => {
+                    const q = Number(item.quantity) || 0;
+                    const r = Number(item.rate) || 0;
+                    return (
+                      <div key={idx} className="flex justify-between text-xs pt-1">
+                        <div>
+                          <p className="font-semibold text-ink-900">{item.productName || 'Item'}</p>
+                          <p className="text-[10px] text-ink-500">{q} × Rs.{r}</p>
+                        </div>
+                        <span className="font-bold text-amber-900">{formatCurrency(q * r)}</span>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 
-              {/* Item Received Row */}
+              {/* Items Received List */}
               <div className="rounded-xl border border-brand-200 bg-brand-50/50 p-3">
                 <div className="flex items-center justify-between text-xs font-bold text-brand-800 border-b border-brand-200 pb-1 mb-1">
-                  <span>ITEM RECEIVED (جو مال ملا)</span>
-                  <span>INCOMING</span>
+                  <span>ITEMS RECEIVED (جو مال ملا/وصول کیا)</span>
+                  <span>INCOMING ({completedExchange?.itemsReceived?.length || receivedItems.length})</span>
                 </div>
-                <div className="flex justify-between text-sm">
-                  <span className="font-semibold text-ink-900">
-                    {completedExchange?.itemReceivedName || receivedProductName}
-                  </span>
-                  <span className="font-bold text-brand-900">
-                    {formatCurrency(completedExchange?.receivedValue ?? receivedValue)}
-                  </span>
-                </div>
-                <div className="text-xs text-ink-500">
-                  Quantity: {formatNumber(completedExchange?.receivedQuantity ?? receivedQty)} × Rate: Rs.{formatNumber(completedExchange?.receivedRate ?? receivedRate)}
+                <div className="space-y-1 pt-1 divide-y divide-brand-200/50">
+                  {(completedExchange?.itemsReceived || receivedItems.filter((i) => i.productName.trim())).map((item, idx) => {
+                    const q = Number(item.quantity) || 0;
+                    const r = Number(item.rate) || 0;
+                    return (
+                      <div key={idx} className="flex justify-between text-xs pt-1">
+                        <div>
+                          <p className="font-semibold text-ink-900">{item.productName || 'Item'}</p>
+                          <p className="text-[10px] text-ink-500">{q} × Rs.{r}</p>
+                        </div>
+                        <span className="font-bold text-brand-900">{formatCurrency(q * r)}</span>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 

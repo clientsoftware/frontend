@@ -23,7 +23,6 @@ api.interceptors.request.use(
 
 api.interceptors.response.use(
   (response) => {
-    // Unwrap { success, data, message } → data (keep blobs intact)
     if (
       response.config.responseType !== 'blob' &&
       response.data &&
@@ -46,7 +45,6 @@ api.interceptors.response.use(
         }
       }
     }
-    // Prefer API message from { success:false, message }
     if (error.response?.data?.message) {
       error.message = error.response.data.message;
     }
@@ -150,4 +148,52 @@ export const settingsAPI = {
   createUser: (data) => api.post('/settings/users', data),
   updateUser: (id, data) => api.put(`/settings/users/${id}`, data),
   deleteUser: (id) => api.delete(`/settings/users/${id}`),
+};
+
+export const employeesAPI = {
+  getAll: () => api.get('/employees'),
+  create: (data) => api.post('/employees', data),
+  update: (id, data) => api.put(`/employees/${id}`, data),
+  delete: (id) => api.delete(`/employees/${id}`),
+};
+
+export const attendanceAPI = {
+  get: (params) => api.get('/attendance', { params }),
+  mark: (data) => api.post('/attendance', data),
+  delete: (id) => api.delete(`/attendance/${id}`),
+};
+
+export const productionAPI = {
+  getItems: () => api.get('/production/items'),
+  createItem: (data) => api.post('/production/items', data),
+  updateItem: (id, data) => api.put(`/production/items/${id}`, data),
+  deleteItem: (id) => api.delete(`/production/items/${id}`),
+  getRecords: (params) => api.get('/production/records', { params }),
+  createRecord: (data) => api.post('/production/records', data),
+  updateRecord: (id, data) => api.put(`/production/records/${id}`, data),
+  deleteRecord: (id) => api.delete(`/production/records/${id}`),
+};
+
+export const payrollAPI = {
+  get: (params) => api.get('/payroll', { params }),
+  generate: (data) => api.post('/payroll', data),
+  delete: (id) => api.delete(`/payroll/${id}`),
+};
+
+export const bankAccountsAPI = {
+  getAll: () => api.get('/bank-accounts'),
+  create: (data) => api.post('/bank-accounts', data),
+  update: (id, data) => api.put(`/bank-accounts/${id}`, data),
+  delete: (id) => api.delete(`/bank-accounts/${id}`),
+};
+
+export const cashTxnsAPI = {
+  getAll: () => api.get('/cash-txns'),
+  create: (data) => api.post('/cash-txns', data),
+  delete: (id) => api.delete(`/cash-txns/${id}`),
+};
+
+export const partyTransfersAPI = {
+  getAll: () => api.get('/party-transfers'),
+  create: (data) => api.post('/party-transfers', data),
 };
